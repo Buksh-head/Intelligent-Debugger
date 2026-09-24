@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: light --default, dark --prefersdark, synthwave, luxury, forest;
+}
+
+/* Monaco decoration for a failing line returned by /api/execute. */
+.error-line-highlight {
+  background-color: rgba(239, 68, 68, 0.25);
+}

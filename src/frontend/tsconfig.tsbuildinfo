@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/instructordashboard.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/auth/authcontext.tsx","./src/auth/protectedroute.tsx","./src/auth/context.ts","./src/auth/useauth.ts","./src/lib/supabaseclient.ts","./src/pages/studentsetuppage.tsx","./src/pages/welcomepage.tsx"],"version":"6.0.3"}
