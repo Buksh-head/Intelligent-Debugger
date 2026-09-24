@@ -12,11 +12,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import analysis, execution, generation, instructor, analytics
 
-app = FastAPI(title="Intelligent Debugging Assistant API")
+app = FastAPI(title="Intelligent Debugging Assistant API", redirect_slashes=False)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://intelligent-debugger.vercel.app", "http://localhost:5173"],  # Vite dev server
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
