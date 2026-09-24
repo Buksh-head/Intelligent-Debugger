@@ -16,7 +16,7 @@ app = FastAPI(title="Intelligent Debugging Assistant API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://intelligent-debugger-back.vercel.app", "http://localhost:5173"],  # Vite dev server
+    allow_origins=["https://intelligent-debugger.vercel.app", "http://localhost:5173"],  # Vite dev server
     allow_methods=["*"],
     allow_headers=["*"],
 )
