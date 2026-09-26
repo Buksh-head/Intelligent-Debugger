@@ -1,7 +1,7 @@
 """Privacy-preserving aggregate queries for the instructor dashboard."""
 
-import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
@@ -28,12 +28,15 @@ def _percent(count: int, total: int) -> float:
 
 @router.get("/cohort", response_model=AnalyticsResponse)
 def get_cohort_analytics(
-    date_range: Literal["today", "last_7_days", "last_month", "semester_2_2026"] = Query("last_7_days"),
+    date_range: Literal[
+        "today",
+        "last_7_days",
+        "last_month",
+        "semester_2_2026",
+    ] = Query("last_7_days"),
     course: str | None = Query(None),
 ) -> AnalyticsResponse:
-    """Return counts only; submission code and session IDs never leave the DB."""
-
-    total_start = time.perf_counter()
+    """Return aggregate counts only; student code and session IDs never leave the DB."""
 
     now = datetime.now(timezone.utc)
 
@@ -49,212 +52,178 @@ def get_cohort_analytics(
     params = {"since": since, "course": course}
     course_filter = " AND s.course = :course" if course else ""
 
-    with Session(get_engine()) as session:
+    engine = get_engine()
 
-        # 1. Session count
-        start = time.perf_counter()
+    # Each database query gets its own Session because SQLAlchemy Sessions
+    # must not be shared between concurrent threads.
+    def fetch_counts():
+        with Session(engine) as session:
+            return session.execute(
+                text(
+                    f"""
+                    SELECT
+                        (
+                            SELECT COUNT(*)
+                            FROM submissions s
+                            WHERE s.created_at >= :since{course_filter}
+                        ) AS session_count,
+                        (
+                            SELECT COUNT(*)
+                            FROM error_logs el
+                            JOIN submissions s ON s.id = el.submission_id
+                            WHERE el.created_at >= :since{course_filter}
+                        ) AS error_count
+                    """
+                ),
+                params,
+            ).one()
 
-        session_count = session.execute(
-            text(
-                f"""
-                SELECT COUNT(*)
-                FROM submissions s
-                WHERE s.created_at >= :since{course_filter}
-                """
-            ),
-            params,
-        ).scalar_one()
+    def fetch_concepts():
+        with Session(engine) as session:
+            return session.execute(
+                text(
+                    """
+                    SELECT
+                        COALESCE(
+                            NULLIF(TRIM(el.error_type), ''),
+                            'Unknown error'
+                        ) AS name,
+                        COUNT(*) AS count
+                    FROM error_logs el
+                    JOIN submissions s ON s.id = el.submission_id
+                    WHERE el.created_at >= :since{course_filter}
+                    GROUP BY 1
+                    ORDER BY count DESC, name
+                    """.format(course_filter=course_filter)
+                ),
+                params,
+            ).all()
 
-        print(
-            f"[analytics] session_count: "
-            f"{time.perf_counter() - start:.3f}s"
-        )
+    def fetch_recurring():
+        with Session(engine) as session:
+            return session.execute(
+                text(
+                    """
+                    SELECT
+                        COALESCE(
+                            NULLIF(TRIM(el.message), ''),
+                            el.error_type
+                        ) AS label,
+                        COUNT(*) AS count
+                    FROM error_logs el
+                    JOIN submissions s ON s.id = el.submission_id
+                    WHERE el.created_at >= :since{course_filter}
+                    GROUP BY 1
+                    ORDER BY count DESC, label
+                    LIMIT 10
+                    """.format(course_filter=course_filter)
+                ),
+                params,
+            ).all()
 
-        # 2. Error count
-        start = time.perf_counter()
+    def fetch_details():
+        with Session(engine) as session:
+            return session.execute(
+                text(
+                    """
+                    SELECT
+                        COALESCE(
+                            NULLIF(TRIM(el.error_type), ''),
+                            'Unknown error'
+                        ) AS concept,
+                        COALESCE(
+                            NULLIF(TRIM(el.message), ''),
+                            el.error_type
+                        ) AS label,
+                        COUNT(*) AS count
+                    FROM error_logs el
+                    JOIN submissions s ON s.id = el.submission_id
+                    WHERE el.created_at >= :since{course_filter}
+                    GROUP BY 1, 2
+                    ORDER BY 1, count DESC, 2
+                    """.format(course_filter=course_filter)
+                ),
+                params,
+            ).all()
 
-        error_count = session.execute(
-            text(
-                f"""
-                SELECT COUNT(*)
-                FROM error_logs el
-                JOIN submissions s ON s.id = el.submission_id
-                WHERE el.created_at >= :since{course_filter}
-                """
-            ),
-            params,
-        ).scalar_one()
+    def fetch_chart():
+        with Session(engine) as session:
+            return session.execute(
+                text(
+                    """
+                    SELECT
+                        COALESCE(
+                            NULLIF(TRIM(el.error_type), ''),
+                            'Unknown error'
+                        ) AS concept,
+                        TO_CHAR(
+                            DATE_TRUNC('day', el.created_at),
+                            'Mon DD'
+                        ) AS label,
+                        COUNT(*) AS count,
+                        DATE_TRUNC('day', el.created_at) AS day
+                    FROM error_logs el
+                    JOIN submissions s ON s.id = el.submission_id
+                    WHERE el.created_at >= :since{course_filter}
+                    GROUP BY 1, 2, 4
+                    ORDER BY 1, 4
+                    """.format(course_filter=course_filter)
+                ),
+                params,
+            ).all()
 
-        print(
-            f"[analytics] error_count: "
-            f"{time.perf_counter() - start:.3f}s"
-        )
+    def fetch_outcomes():
+        with Session(engine) as session:
+            return session.execute(
+                text(
+                    """
+                    SELECT
+                        COALESCE(
+                            NULLIF(TRIM(el.error_type), ''),
+                            'Unknown error'
+                        ) AS concept,
+                        COUNT(*) FILTER (
+                            WHERE el.resolved_at IS NOT NULL
+                        ) AS resolved,
+                        COUNT(*) FILTER (
+                            WHERE
+                                el.resolved_at IS NULL
+                                AND el.hint_stage_reached > 1
+                        ) AS attempted,
+                        COUNT(*) FILTER (
+                            WHERE
+                                el.resolved_at IS NULL
+                                AND el.hint_stage_reached = 1
+                        ) AS untried
+                    FROM error_logs el
+                    JOIN submissions s ON s.id = el.submission_id
+                    WHERE el.created_at >= :since{course_filter}
+                    GROUP BY 1
+                    """.format(course_filter=course_filter)
+                ),
+                params,
+            ).all()
 
-        # 3. Error concepts
-        start = time.perf_counter()
+    # These queries are independent, so run them concurrently rather than
+    # waiting for each network/database round trip sequentially.
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        counts_future = executor.submit(fetch_counts)
+        concepts_future = executor.submit(fetch_concepts)
+        recurring_future = executor.submit(fetch_recurring)
+        details_future = executor.submit(fetch_details)
+        chart_future = executor.submit(fetch_chart)
+        outcomes_future = executor.submit(fetch_outcomes)
 
-        concept_rows = session.execute(
-            text(
-                """
-                SELECT
-                    COALESCE(
-                        NULLIF(TRIM(error_type), ''),
-                        'Unknown error'
-                    ) AS name,
-                    COUNT(*) AS count
-                FROM error_logs el
-                JOIN submissions s ON s.id = el.submission_id
-                WHERE el.created_at >= :since{course_filter}
-                GROUP BY 1
-                ORDER BY count DESC, name
-                """.format(course_filter=course_filter)
-            ),
-            params,
-        ).all()
+        counts = counts_future.result()
+        concept_rows = concepts_future.result()
+        recurring_rows = recurring_future.result()
+        detail_rows = details_future.result()
+        chart_rows = chart_future.result()
+        outcome_rows = outcomes_future.result()
 
-        print(
-            f"[analytics] concept_rows: "
-            f"{time.perf_counter() - start:.3f}s"
-        )
+    session_count = counts.session_count
+    error_count = counts.error_count
 
-        # 4. Recurring errors
-        start = time.perf_counter()
-
-        recurring_rows = session.execute(
-            text(
-                """
-                SELECT
-                    COALESCE(
-                        NULLIF(TRIM(message), ''),
-                        error_type
-                    ) AS label,
-                    COUNT(*) AS count
-                FROM error_logs el
-                JOIN submissions s ON s.id = el.submission_id
-                WHERE el.created_at >= :since{course_filter}
-                GROUP BY 1
-                ORDER BY count DESC, label
-                LIMIT 10
-                """.format(course_filter=course_filter)
-            ),
-            params,
-        ).all()
-
-        print(
-            f"[analytics] recurring_rows: "
-            f"{time.perf_counter() - start:.3f}s"
-        )
-
-        # 5. Error details
-        start = time.perf_counter()
-
-        detail_rows = session.execute(
-            text(
-                """
-                SELECT
-                    COALESCE(
-                        NULLIF(TRIM(el.error_type), ''),
-                        'Unknown error'
-                    ) AS concept,
-                    COALESCE(
-                        NULLIF(TRIM(el.message), ''),
-                        el.error_type
-                    ) AS label,
-                    COUNT(*) AS count
-                FROM error_logs el
-                JOIN submissions s ON s.id = el.submission_id
-                WHERE el.created_at >= :since{course_filter}
-                GROUP BY 1, 2
-                ORDER BY 1, count DESC, 2
-                """.format(course_filter=course_filter)
-            ),
-            params,
-        ).all()
-
-        print(
-            f"[analytics] detail_rows: "
-            f"{time.perf_counter() - start:.3f}s"
-        )
-
-        # 6. Chart data
-        start = time.perf_counter()
-
-        chart_rows = session.execute(
-            text(
-                """
-                SELECT
-                    COALESCE(
-                        NULLIF(TRIM(el.error_type), ''),
-                        'Unknown error'
-                    ) AS concept,
-                    TO_CHAR(
-                        DATE_TRUNC('day', el.created_at),
-                        'Mon DD'
-                    ) AS label,
-                    COUNT(*) AS count,
-                    DATE_TRUNC('day', el.created_at) AS day
-                FROM error_logs el
-                JOIN submissions s ON s.id = el.submission_id
-                WHERE el.created_at >= :since{course_filter}
-                GROUP BY 1, 2, 4
-                ORDER BY 1, 4
-                """.format(course_filter=course_filter)
-            ),
-            params,
-        ).all()
-
-        print(
-            f"[analytics] chart_rows: "
-            f"{time.perf_counter() - start:.3f}s"
-        )
-
-        # 7. Outcomes
-        start = time.perf_counter()
-
-        outcome_rows = session.execute(
-            text(
-                """
-                SELECT
-                    COALESCE(
-                        NULLIF(TRIM(el.error_type), ''),
-                        'Unknown error'
-                    ) AS concept,
-                    COUNT(*) FILTER (
-                        WHERE el.resolved_at IS NOT NULL
-                    ) AS resolved,
-                    COUNT(*) FILTER (
-                        WHERE
-                            el.resolved_at IS NULL
-                            AND el.hint_stage_reached > 1
-                    ) AS attempted,
-                    COUNT(*) FILTER (
-                        WHERE
-                            el.resolved_at IS NULL
-                            AND el.hint_stage_reached = 1
-                    ) AS untried
-                FROM error_logs el
-                JOIN submissions s ON s.id = el.submission_id
-                WHERE el.created_at >= :since{course_filter}
-                GROUP BY 1
-                """.format(course_filter=course_filter)
-            ),
-            params,
-        ).all()
-
-        print(
-            f"[analytics] outcome_rows: "
-            f"{time.perf_counter() - start:.3f}s"
-        )
-
-    # Total database/query processing time
-    database_time = time.perf_counter() - total_start
-
-    print(
-        f"[analytics] TOTAL DATABASE/PROCESSING TIME: "
-        f"{database_time:.3f}s"
-    )
-
-    # Build response
     concepts = [
         AnalyticsConcept(
             name=row.name,
@@ -285,17 +254,12 @@ def get_cohort_analytics(
         )
 
     details: dict[str, AnalyticsConceptDetail] = {}
-
-    outcome_map = {
-        row.concept: row
-        for row in outcome_rows
-    }
+    outcome_map = {row.concept: row for row in outcome_rows}
 
     for concept in concepts:
         outcome = outcome_map.get(concept.name)
 
         total = concept.count
-
         resolved = outcome.resolved if outcome else 0
         attempted = outcome.attempted if outcome else 0
         untried = outcome.untried if outcome else total
