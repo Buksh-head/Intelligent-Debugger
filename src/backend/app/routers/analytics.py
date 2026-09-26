@@ -7,7 +7,6 @@ from typing import Literal
 from fastapi import APIRouter, Query
 from sqlalchemy import text
 from sqlmodel import Session
-import time
 
 from app.models import (
     AnalyticsConcept,
@@ -44,12 +43,8 @@ def get_cohort_analytics(
     params = {"since": since, "course": course}
     course_filter = " AND s.course = :course" if course else ""
 
-    db_start = time.perf_counter()
     with Session(get_engine()) as session:
-        session_count = session.execute(
-            text(f"SELECT COUNT(*) FROM submissions s WHERE s.created_at >= :since{course_filter}"),
-            params
-        ).scalar_one()
+        session_count = session.execute(text(f"SELECT COUNT(*) FROM submissions s WHERE s.created_at >= :since{course_filter}"), params).scalar_one()
         error_count = session.execute(text(f"""
             SELECT COUNT(*)
             FROM error_logs el
@@ -106,8 +101,6 @@ def get_cohort_analytics(
             WHERE el.created_at >= :since{course_filter}
             GROUP BY 1
         """.format(course_filter=course_filter)), params).all()
-        
-        print(f"TOTAL DATABASE QUERIES: {time.perf_counter() - db_start:.3f}s")
 
     concepts = [
         AnalyticsConcept(name=row.name, count=row.count, percent=_percent(row.count, error_count))
