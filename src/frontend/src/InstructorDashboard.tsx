@@ -58,10 +58,20 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
       .catch((error: unknown) => setAnalyticsError(error instanceof Error ? error.message : 'Unable to load cohort analytics.'))
   }, [course, dateRange])
 
-  const activeConcept = useMemo(
-    () => (selectedConcept && analytics ? analytics.details[selectedConcept] : null),
-    [analytics, selectedConcept],
-  )
+    const activeConcept = useMemo(() => {
+    if (!selectedConcept || !analytics) return null
+
+    return analytics.details[selectedConcept] ?? {
+      title: selectedConcept,
+      description: `No records found for ${selectedConcept} in the selected date range.`,
+      period_label: 'No recorded errors in the selected dataset',
+      chart_points: [],
+      grouped_errors: [],
+      outcomes: [],
+      topics: [],
+      note: 'No records were found for this error type in the selected date range.',
+    }
+  }, [analytics, selectedConcept])
 
   const concepts: AnalyticsConcept[] = analytics?.concepts ?? []
   const overviewStats = analytics
