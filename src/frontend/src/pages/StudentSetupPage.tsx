@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useStudentSession } from '../session/useStudentSession';
 
 const courses = ['CSSE1001', 'CSSE2002', 'ENGG1001', 'DECO1800', 'Other'];
 const languages = ['Python', 'JavaScript', 'Java', 'C++'];
@@ -12,12 +13,13 @@ const courseLanguages: Record<string, string> = {
 
 export default function StudentSetupPage() {
   const navigate = useNavigate();
+  const { startSession } = useStudentSession();
   const [course, setCourse] = useState('');
   const [language, setLanguage] = useState('');
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    sessionStorage.setItem('debugging-assistant.student-context', JSON.stringify({ course, language }));
+    startSession({ course, language });
     navigate('/');
   };
 

@@ -15,8 +15,9 @@ def execute_code(payload: SubmissionRequest) -> ExecutionResponse:
     """Runs student code in the sandbox via Piston, persists the submission
     and any error to the database (#4), and returns the result.
 
-    session_id isn't tracked client-side yet, so a fresh one is generated
-    per request if the caller doesn't supply one.
+    The frontend sends the ID of the current student session, which starts
+    at login and ends at logout. A fresh one is generated per request if the
+    caller doesn't supply one.
     """
     result = run_in_sandbox(payload.code, payload.language)
 

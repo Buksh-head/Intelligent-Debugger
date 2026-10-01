@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { ChevronDown } from 'lucide-react';
+import { useStudentSession } from '../session/useStudentSession';
 
 type Role = 'student' | 'instructor';
 type InstructorMode = 'login' | 'register';
@@ -70,6 +71,7 @@ function TailwindDropdown({
 export default function WelcomePage() {
   const navigate = useNavigate();
   const { signIn, signUp } = useAuth();
+  const { startSession } = useStudentSession();
   const [role, setRole] = useState<Role>('student');
   const [instructorMode, setInstructorMode] = useState<InstructorMode>('login');
   const [userId, setUserId] = useState('');
@@ -154,7 +156,7 @@ export default function WelcomePage() {
       return;
     }
 
-    sessionStorage.setItem('debugging-assistant.student-context', JSON.stringify({ course, language }));
+    startSession({ course, language });
     navigate('/student');
   };
 

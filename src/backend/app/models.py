@@ -11,7 +11,7 @@ class SubmissionRequest(SQLModel):
     expected_behaviour: str = ""
     course: str | None = None
     language: str = "Python"
-    session_id: str | None = None  # not persisted client-side yet; generated server-side if omitted
+    session_id: str | None = None  # sent by the frontend per student session; generated server-side if omitted
 
 
 class Finding(SQLModel):
