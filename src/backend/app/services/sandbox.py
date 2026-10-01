@@ -38,8 +38,9 @@ def run_in_sandbox(source: str, language: str = "Python") -> dict:
             "language": piston_language,
             "version": RUNTIME_VERSIONS[piston_language],
             "files": [{"content": source}],
+            "run_timeout": 15000,
         },
-        timeout=15.0,
+        timeout=30.0,
     )
     response.raise_for_status()
     run = response.json()["run"]
