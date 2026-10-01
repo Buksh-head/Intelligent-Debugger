@@ -17,6 +17,9 @@ services:
       SUPABASE_URL: ${SUPABASE_URL}
       GROQ_API_TOKEN: ${GROQ_API_TOKEN}
       GROQ_API_URL: ${GROQ_API_URL}
+    depends_on:
+      piston-setup:
+        condition: service_completed_successfully
 
   frontend:
     build:
@@ -46,6 +49,19 @@ services:
       - piston-packages:/piston/packages
     tmpfs:
       - /tmp:exec
+
+  piston-setup:
+    image: ghcr.io/engineer-man/piston
+    entrypoint: ["python3", "/setup/setup_runtime.py"]
+    restart: "no"
+    environment:
+      PISTON_URL: http://piston:2000
+    volumes:
+      - piston-packages:/piston/packages
+      - ./piston:/setup:ro
+    depends_on:
+      - piston
+
 
 volumes:
   piston-packages:

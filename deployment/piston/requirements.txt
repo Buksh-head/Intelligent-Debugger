@@ -1,0 +1,9 @@
+# Python modules available to student code inside the Piston sandbox.
+# setup_runtime.py installs these into the Piston Python runtime on every
+# `docker compose up`. When adding a module, also add its import to
+# SMOKE_CHECK_SOURCE in setup_runtime.py.
+#
+# The Piston Python 3.12.0 runtime already bundles numpy 1.26, pandas and
+# scipy. Keep numpy below 2 so those bundled modules keep working.
+numpy<2
+matplotlib
