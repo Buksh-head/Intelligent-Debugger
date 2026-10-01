@@ -49,6 +49,8 @@ services:
       - piston-packages:/piston/packages
     tmpfs:
       - /tmp:exec
+    environment:
+      PISTON_LIMIT_OVERRIDES: '{"python":{"run_timeout":20000}}'
 
   piston-setup:
     image: ghcr.io/engineer-man/piston
