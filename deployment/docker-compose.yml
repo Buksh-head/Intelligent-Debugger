@@ -52,6 +52,11 @@ services:
     environment:
       PISTON_LIMIT_OVERRIDES: '{"python":{"run_timeout":20000}}'
 
+  # One-shot job: installs the Python runtime and the modules listed in
+  # piston/requirements.txt into the piston-packages volume, then smoke checks
+  # them through the Piston API. The backend waits for it to succeed, so the
+  # stack cannot come up with an incomplete sandbox runtime. Reuses the Piston
+  # image so pip runs against the same OS the runtime was built for.
   piston-setup:
     image: ghcr.io/engineer-man/piston
     entrypoint: ["python3", "/setup/setup_runtime.py"]
@@ -63,7 +68,6 @@ services:
       - ./piston:/setup:ro
     depends_on:
       - piston
-
 
 volumes:
   piston-packages:
