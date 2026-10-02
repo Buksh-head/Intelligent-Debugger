@@ -425,7 +425,7 @@ function App() {
                       <Editor
                         height="100%"
                         language={editorLanguage.monaco}
-                        theme="vs-dark"
+                        theme={theme === 'light' ? 'light' : 'vs-dark'}
                         value={code}
                         onChange={(value) => {
                           // Editing keeps the chat; only a new run moves the feedback on.
@@ -517,13 +517,6 @@ function App() {
                             </div>
                           )}
 
-                          {result?.error && currentStage === null && !isHintLoading && !isLoading && (
-                            <button className="btn btn-outline btn-primary pointer-events-auto self-start" onClick={handleGetHint}>
-                              <HandHelping size={16} />
-                              Get a hint
-                            </button>
-                          )}
-
                           {messages.map((m, i) => {
                             if (m.role === 'event') {
                               return (
@@ -576,6 +569,13 @@ function App() {
                               </div>
                             );
                           })}
+
+                          {result?.error && currentStage === null && !isHintLoading && !isLoading && (
+                            <button className="btn btn-outline btn-primary pointer-events-auto self-start" onClick={handleGetHint}>
+                              <HandHelping size={16} />
+                              Get a hint
+                            </button>
+                          )}
 
                           {isHintLoading && <p className="text-sm opacity-70">Thinking...</p>}
                           {hintError && <p className="text-sm text-error">{hintError}</p>}

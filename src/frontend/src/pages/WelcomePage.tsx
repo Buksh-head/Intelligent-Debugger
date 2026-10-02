@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
-import { ChevronDown } from 'lucide-react';
 import { useStudentSession } from '../session/useStudentSession';
 
 type Role = 'student' | 'instructor';
@@ -13,60 +12,6 @@ const courseLanguages: Record<string, string> = {
   ENGG1001: 'Python',
   DECO1800: 'JavaScript',
 };
-
-type DropdownOption = { value: string; label: string };
-
-function TailwindDropdown({
-  value,
-  placeholder,
-  options,
-  onChange,
-}: {
-  value: string;
-  placeholder: string;
-  options: DropdownOption[];
-  onChange: (value: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-
-  const selectedOption = options.find((option) => option.value === value);
-
-  return (
-    <div className="relative w-full">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex h-12 w-full items-center justify-between rounded-full border border-base-content/20 bg-base-100 px-4 text-left text-sm text-base-content hover:border-primary"
-      >
-        <span className={selectedOption ? '' : 'text-base-content/60'}>
-          {selectedOption?.label ?? placeholder}
-        </span>
-        <ChevronDown size={16} aria-hidden="true" />
-      </button>
-
-      {open && (
-        <ul className="absolute z-30 mt-2 w-full rounded-2xl border border-base-content/15 bg-base-100 p-1 shadow-xl">
-          {options.map((option) => (
-            <li key={option.value}>
-              <button
-                type="button"
-                className={`w-full rounded-lg px-3 py-2 text-left hover:bg-base-200 ${
-                  option.value === value ? 'active' : ''
-                }`}
-                onClick={() => {
-                  onChange(option.value);
-                  setOpen(false);
-                }}
-              >
-                {option.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 export default function WelcomePage() {
   const navigate = useNavigate();
@@ -220,34 +165,34 @@ export default function WelcomePage() {
                 <>
                   <label className="form-control w-full gap-0">
                     <span className="label-text block pb-2 text-sm font-medium">What course do you need help with?</span>
-                    <TailwindDropdown
+                    <select
+                      className="select select-bordered h-12 w-full bg-base-100 text-base-content"
                       value={course}
-                      placeholder="Select a course"
-                      options={[
-                        { value: 'CSSE1001', label: 'CSSE1001 Introduction to Software Engineering' },
-                        { value: 'CSSE2002', label: 'CSSE2002 Programming in the Large' },
-                        { value: 'ENGG1001', label: 'ENGG1001 Introduction to Engineering' },
-                        { value: 'DECO1800', label: 'DECO1800 Design Computing' },
-                      ]}
-                      onChange={(selectedCourse) => {
+                      onChange={(event) => {
+                        const selectedCourse = event.target.value;
                         setCourse(selectedCourse);
                         setLanguage(courseLanguages[selectedCourse] ?? 'Python');
                       }}
-                    />
+                    >
+                      <option value="" disabled>Select a course</option>
+                      <option value="CSSE1001">CSSE1001 Introduction to Software Engineering</option>
+                      <option value="CSSE2002">CSSE2002 Programming in the Large</option>
+                      <option value="ENGG1001">ENGG1001 Introduction to Engineering</option>
+                      <option value="DECO1800">DECO1800 Design Computing</option>
+                    </select>
                   </label>
 
                   <label className="form-control w-full gap-0">
                     <span className="label-text block pb-2 text-sm font-medium">Programming language</span>
-                    <TailwindDropdown
+                    <select
+                      className="select select-bordered h-12 w-full bg-base-100 text-base-content"
                       value={language}
-                      placeholder="Select a programming language"
-                      options={[
-                        { value: 'Python', label: 'Python' },
-                        { value: 'Java', label: 'Java' },
-                        { value: 'JavaScript', label: 'JavaScript' },
-                      ]}
-                      onChange={setLanguage}
-                    />
+                      onChange={(event) => setLanguage(event.target.value)}
+                    >
+                      <option value="Python">Python</option>
+                      <option value="Java">Java</option>
+                      <option value="JavaScript">JavaScript</option>
+                    </select>
                   </label>
                 </>
               ) : (

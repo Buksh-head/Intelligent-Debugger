@@ -89,14 +89,11 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
   const chartLeft = 48
   const chartTop = 12
   const chartBottom = chartTop + chartHeight
-  const chartStep = chartPoints.length > 1 ? chartWidth / (chartPoints.length - 1) : chartWidth
-  const chartPath = chartPoints
-    .map((point, index) => {
-      const x = chartLeft + index * chartStep
-      const y = chartBottom - (point.count / chartMax) * chartHeight
-      return `${index === 0 ? 'M' : 'L'} ${x} ${y}`
-    })
-    .join(' ')
+  const chartStep = chartPoints.length > 0 ? chartWidth / chartPoints.length : chartWidth
+  const barWidth = chartPoints.length > 0
+    ? Math.min(46, Math.max(18, chartStep * 0.62))
+    : 0
+  const labelStep = Math.max(1, Math.ceil(chartPoints.length / 8))
   const yTicks = Array.from({ length: 5 }, (_, index) => Math.round((chartMax * index) / 4))
 
   return (
@@ -202,7 +199,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
 
                 <div className="flex min-w-[140px] flex-col gap-1.5 min-[981px]:col-start-3 min-[981px]:row-start-1 min-[981px]:justify-self-end">
                     <label className="text-xs text-base-content/70">Date range</label>
-                    <select className="select select-bordered select-sm w-full bg-base-100 text-base-content" value={dateRange} onChange={(event) => setDateRange(event.target.value as AnalyticsDateRange)}>
+                    <select className="select select-bordered h-12 w-full bg-base-100 text-base-content" value={dateRange} onChange={(event) => setDateRange(event.target.value as AnalyticsDateRange)}>
                       <option value="today">Today</option>
                       <option value="last_7_days">Last 7 days</option>
                       <option value="last_month">Last month</option>
@@ -221,21 +218,22 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                       const y = chartBottom - (index / 4) * chartHeight
                       return (
                         <g key={tick}>
-                          <line x1={chartLeft} x2={chartLeft + chartWidth} y1={y} y2={y} stroke="rgba(75,85,99,0.22)" />
-                          <text x={chartLeft - 8} y={y + 4} textAnchor="end" fill="#4b5563" className="text-[10px]">{tick}</text>
+                          <line x1={chartLeft} x2={chartLeft + chartWidth} y1={y} y2={y} stroke="currentColor" opacity="0.2" />
+                          <text x={chartLeft - 8} y={y + 4} textAnchor="end" fill="currentColor" className="text-[10px]">{tick}</text>
                         </g>
                       )
                     })}
-                    <line x1={chartLeft} x2={chartLeft} y1={chartTop} y2={chartBottom} stroke="rgba(75,85,99,0.55)" />
-                    <line x1={chartLeft} x2={chartLeft + chartWidth} y1={chartBottom} y2={chartBottom} stroke="rgba(75,85,99,0.55)" />
-                    {chartPath && <path d={chartPath} fill="none" stroke="#51247a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
+                    <line x1={chartLeft} x2={chartLeft} y1={chartTop} y2={chartBottom} stroke="currentColor" opacity="0.55" />
+                    <line x1={chartLeft} x2={chartLeft + chartWidth} y1={chartBottom} y2={chartBottom} stroke="currentColor" opacity="0.55" />
                     {chartPoints.map((point, index) => {
-                      const x = chartLeft + index * chartStep
-                      const y = chartBottom - (point.count / chartMax) * chartHeight
+                      const x = chartLeft + (index + 0.5) * chartStep
+                      const barHeight = (point.count / chartMax) * chartHeight
                       return (
                         <g key={`${point.label}-${index}`}>
-                          <circle cx={x} cy={y} r="3.5" fill="#51247a" />
-                          <text x={x} y={chartBottom + 18} textAnchor="middle" fill="#4b5563" className="text-[10px]">{point.label}</text>
+                          <rect x={x - barWidth / 2} y={chartBottom - barHeight} width={barWidth} height={barHeight} rx="3" fill="currentColor" className="text-primary" opacity="0.9" />
+                          {(index % labelStep === 0 || index === chartPoints.length - 1) && (
+                            <text x={x} y={chartBottom + 18} textAnchor="middle" fill="currentColor" className="text-[10px]">{point.label}</text>
+                          )}
                         </g>
                       )
                     })}
@@ -260,7 +258,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                 <div className="mt-[18px] flex h-7 overflow-hidden rounded-lg border border-base-300 bg-base-100">
                   {activeConcept.outcomes.map((item) => (
                     <div key={item.label} className="h-full" style={{ width: `${item.percent}%` }}>
-                      <div className={`h-full ${item.tone === 'resolved' ? 'bg-green-700' : item.tone === 'attempted' ? 'bg-amber-600' : 'bg-red-700'}`} />
+                      <div className={`h-full ${item.tone === 'resolved' ? 'bg-green-600/90' : item.tone === 'attempted' ? 'bg-amber-500/90' : 'bg-red-600/90'}`} />
                     </div>
                   ))}
                 </div>
@@ -269,7 +267,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                   {activeConcept.outcomes.length === 0 ? <p className="text-sm text-base-content/60">No records found</p> : activeConcept.outcomes.map((item) => (
                     <div key={item.label} className="text-base-content/80">
                       <div className="mb-2 text-xs">
-                        <strong className={`text-2xl font-semibold tracking-tight ${item.tone === 'resolved' ? 'text-green-500' : item.tone === 'attempted' ? 'text-amber-400' : 'text-red-500'}`}>{item.count}</strong> • {item.percent}%
+                        <strong className={`text-2xl font-semibold tracking-tight ${item.tone === 'resolved' ? 'text-green-400/90' : item.tone === 'attempted' ? 'text-amber-300/90' : 'text-red-400/90'}`}>{item.count}</strong> • {item.percent}%
                       </div>
                       <span>{item.label}</span>
                     </div>
@@ -303,7 +301,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                 <div className="flex flex-wrap items-end gap-3.5">
                   <div className="flex min-w-[140px] flex-col gap-1.5">
                     <label className="text-xs text-base-content/70">Class</label>
-                    <select className="select select-bordered select-sm w-full bg-base-100 text-base-content" value={course} onChange={(event) => setCourse(event.target.value)}>
+                    <select className="select select-bordered h-12 w-full bg-base-100 text-base-content" value={course} onChange={(event) => setCourse(event.target.value)}>
                       <option value="">All classes</option>
                       {courseCodes.map((courseCode) => <option key={courseCode} value={courseCode}>{courseCode}</option>)}
                     </select>
@@ -311,7 +309,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
 
                   <div className="flex min-w-[140px] flex-col gap-1.5">
                     <label className="text-xs text-base-content/70">Date range</label>
-                    <select className="select select-bordered select-sm w-full bg-base-100 text-base-content" value={dateRange} onChange={(event) => setDateRange(event.target.value as AnalyticsDateRange)}>
+                    <select className="select select-bordered h-12 w-full bg-base-100 text-base-content" value={dateRange} onChange={(event) => setDateRange(event.target.value as AnalyticsDateRange)}>
                       <option value="today">Today</option>
                       <option value="last_7_days">Last 7 days</option>
                       <option value="last_month">Last month</option>
