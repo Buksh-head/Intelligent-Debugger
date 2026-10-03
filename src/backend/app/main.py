@@ -10,7 +10,7 @@ load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import analysis, execution, generation, instructor, analytics
+from app.routers import analysis, execution, generation, instructor, analytics, insights
 
 app = FastAPI(title="Intelligent Debugging Assistant API")
 
@@ -27,6 +27,7 @@ app.include_router(execution.router)
 app.include_router(generation.router)
 app.include_router(instructor.router)
 app.include_router(analytics.router)
+app.include_router(insights.router)
 
 
 @app.get("/health")

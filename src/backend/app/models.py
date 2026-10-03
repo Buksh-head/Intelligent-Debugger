@@ -105,3 +105,18 @@ class AnalyticsResponse(SQLModel):
     recurring_errors: list[AnalyticsError]
     details: dict[str, AnalyticsConceptDetail]
 
+class InsightStats(SQLModel):
+    error_type: str
+    data_window: str
+    total_errors: int
+    distinct_sessions: int | None = None
+    daily_counts: list[AnalyticsChartPoint]
+    message_breakdown: list[AnalyticsError]
+    outcomes: list[AnalyticsOutcome]
+    related_concepts: list[AnalyticsError] = []
+    
+class InsightsResponse(SQLModel):
+    error_type: str
+    summary: str
+    low_data: bool = False
+    generated: bool = True

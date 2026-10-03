@@ -17,6 +17,7 @@ services:
       SUPABASE_URL: ${SUPABASE_URL}
       GROQ_API_TOKEN: ${GROQ_API_TOKEN}
       GROQ_API_URL: ${GROQ_API_URL}
+      INSTRUCTOR_TOKEN: ${INSTRUCTOR_TOKEN}
     depends_on:
       piston-setup:
         condition: service_completed_successfully
