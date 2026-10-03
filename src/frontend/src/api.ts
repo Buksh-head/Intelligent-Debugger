@@ -51,3 +51,10 @@ export async function getCohortAnalytics(dateRange: AnalyticsDateRange, course?:
   });
   return response.data;
 }
+
+// Deletes everything stored for a session. The backend keeps only
+// anonymous daily counts for the instructor dashboard. Returns nothing:
+// the backend replies 204 whether or not the session had data.
+export async function deleteStudentData(sessionId: string): Promise<void> {
+  await axios.delete(`${API_URL}/api/student-data/${encodeURIComponent(sessionId.trim())}`);
+}

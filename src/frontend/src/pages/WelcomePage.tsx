@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { deleteStudentData } from '../api';
 import { useAuth } from '../auth/useAuth';
 import { useStudentSession } from '../session/useStudentSession';
 
 type Role = 'student' | 'instructor';
 type InstructorMode = 'login' | 'register';
+type PastDeleteStatus = 'idle' | 'deleting' | 'done';
 
 const courseLanguages: Record<string, string> = {
   CSSE1001: 'Python',
@@ -12,6 +14,10 @@ const courseLanguages: Record<string, string> = {
   ENGG1001: 'Python',
   DECO1800: 'JavaScript',
 };
+
+// Session IDs are UUIDs from crypto.randomUUID(). Checking the shape here
+// gives the student a clear message for a mistyped ID instead of a server error.
+const sessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default function WelcomePage() {
   const navigate = useNavigate();
@@ -28,23 +34,29 @@ export default function WelcomePage() {
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Deleting data from a past session, using an ID the student saved (#23).
+  const [showPastDelete, setShowPastDelete] = useState(false);
+  const [pastSessionId, setPastSessionId] = useState('');
+  const [pastDeleteStatus, setPastDeleteStatus] = useState<PastDeleteStatus>('idle');
+  const [pastDeleteError, setPastDeleteError] = useState('');
+
   const roleContent = role === 'student'
     ? {
-        eyebrow: 'Intelligent Debugging Assistant',
-        title: 'Learn to debug with confidence.',
-        description: 'Work through your own code with staged hints, clear explanations, and small experiments that build lasting debugging skills.',
-        features: ['Progressive hints', 'Better feedback'],
-        welcome: 'Start a debugging session',
-        prompt: 'Choose your course and programming language.',
-      }
+      eyebrow: 'Intelligent Debugging Assistant',
+      title: 'Learn to debug with confidence.',
+      description: 'Work through your own code with staged hints, clear explanations, and small experiments that build lasting debugging skills.',
+      features: ['Progressive hints', 'Better feedback'],
+      welcome: 'Start a debugging session',
+      prompt: 'Choose your course and programming language.',
+    }
     : {
-        eyebrow: 'Intelligent Debugging Assistant',
-        title: 'See where students get stuck.',
-        description: 'Review anonymous cohort patterns, recurring errors, and common misconceptions to support more targeted teaching.',
-        features: ['Cohort insights', 'Targeted teaching insights'],
-        welcome: 'Instructor access',
-        prompt: instructorMode === 'login' ? 'Sign in to view your cohort dashboard.' : 'Register to view your cohort dashboard.',
-      };
+      eyebrow: 'Intelligent Debugging Assistant',
+      title: 'See where students get stuck.',
+      description: 'Review anonymous cohort patterns, recurring errors, and common misconceptions to support more targeted teaching.',
+      features: ['Cohort insights', 'Targeted teaching insights'],
+      welcome: 'Instructor access',
+      prompt: instructorMode === 'login' ? 'Sign in to view your cohort dashboard.' : 'Register to view your cohort dashboard.',
+    };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -103,6 +115,37 @@ export default function WelcomePage() {
 
     startSession({ course, language });
     navigate('/student');
+  };
+
+  const openPastDelete = () => {
+    setPastSessionId('');
+    setPastDeleteStatus('idle');
+    setPastDeleteError('');
+    setShowPastDelete(true);
+  };
+
+  const closePastDelete = () => {
+    if (pastDeleteStatus === 'deleting') return;
+    setShowPastDelete(false);
+  };
+
+  // The backend replies the same way whether or not the session had data,
+  // so the success message can't say for certain that something was deleted.
+  const handlePastDelete = async () => {
+    const id = pastSessionId.trim();
+    if (!sessionIdPattern.test(id)) {
+      setPastDeleteError("That doesn't look like a session ID. It should look like 3f2a9c1b-7d4e-4b8a-9c6f-1e2d3c4b5a69.");
+      return;
+    }
+    setPastDeleteStatus('deleting');
+    setPastDeleteError('');
+    try {
+      await deleteStudentData(id);
+      setPastDeleteStatus('done');
+    } catch {
+      setPastDeleteError('Could not reach the server. Please try again.');
+      setPastDeleteStatus('idle');
+    }
   };
 
   return (
@@ -241,10 +284,75 @@ export default function WelcomePage() {
                   {instructorMode === 'login' ? 'Register' : 'Sign in'}
                 </button>
               </p>
-            ) : <div className="mt-4 min-h-5" aria-hidden="true" />}
+            ) : (
+              <p className="mt-4 min-h-5 text-center text-sm">
+                <button type="button" className="link text-base-content/60 hover:text-base-content" onClick={openPastDelete}>
+                  Delete data from a past session
+                </button>
+              </p>
+            )}
           </div>
         </section>
       </main>
+
+      {showPastDelete && (
+        <div className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="past-delete-title">
+          <div className="modal-box">
+            <h3 id="past-delete-title" className="text-lg font-bold">Delete data from a past session</h3>
+
+            {pastDeleteStatus === 'done' ? (
+              <>
+                <p className="py-3 text-sm">
+                  Done. If any data was stored under that session ID, it has been deleted.
+                </p>
+                <div className="modal-action">
+                  <button type="button" className="btn btn-primary" onClick={closePastDelete}>
+                    Close
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="py-3 text-sm">
+                  Paste the session ID you saved. This deletes the code, errors and hints from that session. It can't be undone.
+                </p>
+                <input
+                  type="text"
+                  className="input input-bordered w-full font-mono text-sm"
+                  placeholder="e.g. 3f2a9c1b-7d4e-4b8a-9c6f-1e2d3c4b5a69"
+                  value={pastSessionId}
+                  onChange={(event) => {
+                    setPastSessionId(event.target.value);
+                    setPastDeleteError('');
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      handlePastDelete();
+                    }
+                  }}
+                  disabled={pastDeleteStatus === 'deleting'}
+                  autoFocus
+                />
+                {pastDeleteError && <p className="mt-2 text-sm text-error">{pastDeleteError}</p>}
+                <div className="modal-action">
+                  <button type="button" className="btn" onClick={closePastDelete} disabled={pastDeleteStatus === 'deleting'}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-error"
+                    onClick={handlePastDelete}
+                    disabled={pastDeleteStatus === 'deleting' || !pastSessionId.trim()}
+                  >
+                    {pastDeleteStatus === 'deleting' ? <span className="loading loading-spinner loading-sm"></span> : 'Delete'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

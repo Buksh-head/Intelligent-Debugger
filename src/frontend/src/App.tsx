@@ -10,8 +10,8 @@ import WelcomePage from './pages/WelcomePage';
 import ProtectedRoute from './auth/ProtectedRoute';
 import { useAuth } from './auth/useAuth';
 import { useStudentSession } from './session/useStudentSession';
-import { executeCode, getHint } from './api';
 import type { ExecutionResponse, Finding, HintStage } from './types';
+import { deleteStudentData, executeCode, getHint } from './api';
 
 import {
   LogOut,
@@ -31,6 +31,9 @@ import {
   UserRound,
   BookOpen,
   ExternalLink,
+  Copy,
+  Check,
+  Trash2,
 } from 'lucide-react';
 
 type MonacoEditor = Parameters<OnMount>[0];
@@ -101,6 +104,10 @@ function App() {
   const [input, setInput] = useState('');
   const [currentStage, setCurrentStage] = useState<number | null>(null);
   const [hintError, setHintError] = useState<string | null>(null);
+  const [idCopied, setIdCopied] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const { signOut } = useAuth();
@@ -127,6 +134,10 @@ function App() {
     setInput('');
     setCurrentStage(null);
     setHintError(null);
+    setIdCopied(false);
+    setConfirmingDelete(false);
+    setIsDeleting(false);
+    setDeleteError(null);
   }
 
   // Requests still in flight when the session changes must not write into the
@@ -141,6 +152,7 @@ function App() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   // The final stage reveals the answer, so there is nothing further to unlock.
   const isFinalStage = currentStage === 5;
@@ -339,6 +351,34 @@ function App() {
     navigate('/');
   };
 
+  // Copies the session ID so the student can delete this session's data
+  // later, after the ID has gone from the browser
+  const handleCopySessionId = async () => {
+    if (!sessionId) return;
+    try {
+      await navigator.clipboard.writeText(sessionId);
+      setIdCopied(true);
+      setTimeout(() => setIdCopied(false), 2000);
+    } catch {
+      // Clipboard can be blocked, the ID is still shown for manual copying.
+    }
+  };
+
+  // Deletes everything stored for this session, then ends it, so later runs
+  // aren't saved under the ID that was just cleared.
+  const handleDeleteData = async () => {
+    if (!sessionId) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteStudentData(sessionId);
+      await handleLogout();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Could not delete your data. Try again.');
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <Routes>
       <Route
@@ -355,7 +395,20 @@ function App() {
                   />
                   <div className="min-w-0">
                     <h1 className="font-mono text-xl font-semibold leading-tight tracking-wide text-primary sm:text-2xl sm:tracking-wider lg:text-3xl">INTELLIGENT {editorLanguage.label.toUpperCase()} DEBUGGER</h1>
-                    <p className='mt-1'>Student View{selectedCourse ? ` | ${selectedCourse}` : ''}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <p>Student View{selectedCourse ? ` | ${selectedCourse}` : ''}</p>
+                      {sessionId && (
+                        <button
+                          type="button"
+                          onClick={handleCopySessionId}
+                          className="badge badge-outline gap-1 font-mono text-xs cursor-pointer"
+                          title="Click to copy your full session ID"
+                        >
+                          Session {sessionId.slice(0, 8)}…
+                          {idCopied ? <Check size={12} /> : <Copy size={12} />}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="dropdown dropdown-end">
@@ -369,6 +422,7 @@ function App() {
                   </button>
 
                   <div
+                    ref={menuRef}
                     tabIndex={0}
                     className="dropdown-content z-20 mt-3 w-64 rounded-xl border border-base-300 bg-base-100 p-4 shadow-xl"
                   >
@@ -398,7 +452,70 @@ function App() {
                         {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
                       </button>
                     </div>
+                    <div className="mb-3 border-b border-base-300 pb-3">
+                      <div className="font-medium">Session ID</div>
+                      <div className="mt-1 flex items-center gap-2">
+                        <code className="flex-1 truncate rounded bg-base-200 px-2 py-1 text-xs" title={sessionId ?? ''}>
+                          {sessionId ?? 'No active session'}
+                        </code>
+                        <button
+                          type="button"
+                          className="btn btn-xs btn-ghost"
+                          onClick={handleCopySessionId}
+                          disabled={!sessionId}
+                          aria-label="Copy session ID"
+                        >
+                          {idCopied ? <Check size={14} /> : <Copy size={14} />}
+                        </button>
+                      </div>
+                      <p className="mt-1 text-xs text-base-content/60">
+                        Keep this to delete this session's data after you log out.
+                      </p>
+                    </div>
 
+                    {confirmingDelete ? (
+                      <div className="mb-3 rounded-lg border border-error/40 p-3">
+                        <p className="mb-2 text-sm">
+                          Delete your code, errors and hints from this session? This can't be undone.
+                        </p>
+                        {deleteError && <p className="mb-2 text-xs text-error">{deleteError}</p>}
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className="btn btn-sm flex-1"
+                            onClick={() => {
+                              menuRef.current?.focus();
+                              setConfirmingDelete(false);
+                              setDeleteError(null);
+                            }}
+                            disabled={isDeleting}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-error flex-1"
+                            onClick={handleDeleteData}
+                            disabled={isDeleting}
+                          >
+                            {isDeleting ? <span className="loading loading-spinner loading-xs"></span> : 'Delete'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm mb-3 w-full"
+                        onClick={() => {
+                          menuRef.current?.focus();
+                          setConfirmingDelete(true);
+                        }}
+                        disabled={!sessionId || isLoading || isHintLoading}
+                      >
+                        <Trash2 size={16} />
+                        Delete my data
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="btn btn-outline btn-error w-full"
