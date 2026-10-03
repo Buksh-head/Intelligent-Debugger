@@ -239,11 +239,11 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
 
                 <div className="flex min-w-[140px] flex-col gap-1.5 min-[981px]:col-start-3 min-[981px]:row-start-1 min-[981px]:justify-self-end">
                     <label className="text-xs text-base-content/70">Date range</label>
-                    <select className="appearance-none rounded-lg border border-white/20 bg-white/[0.03] px-3 py-2 text-sm text-gray-100" value={dateRange} onChange={(event) => setDateRange(event.target.value as AnalyticsDateRange)}>
+                    <select className="select select-bordered h-12 w-full bg-base-100 text-base-content" value={dateRange} onChange={(event) => setDateRange(event.target.value as AnalyticsDateRange)}>
                       <option value="today">Today</option>
                       <option value="last_7_days">Last 7 days</option>
                       <option value="last_month">Last month</option>
-                      <option value="semester_2_2026">2026 Sem2</option>
+                      <option value="semester_2_2026">2026 Sem 2</option>
                     </select>
                 </div>
               </div>
@@ -340,17 +340,6 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                   ) : (
                     <p className="mt-4 text-sm text-base-content/60">Select an error type to generate an instructor insight.</p>
                   )}
-                </div>
-                <div className="rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
-                  <div className="mb-1.5 text-[1.05rem] font-semibold">Related teaching topics</div>
-                  <p className="m-0 text-xs text-base-content/60">Suggested from the error taxonomy—not an automated teaching decision.</p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {activeConcept.topics.length === 0 ? <p className="text-sm text-base-content/60">No records found</p> : activeConcept.topics.map((topic) => (
-                      <span key={topic} className="badge badge-outline h-auto px-2.5 py-1.5 text-[0.85rem] text-base-content/80">
-                        {topic}
-                      </span>
-                    )}
-                  </div>
                 </div>
               </div>
             </>
