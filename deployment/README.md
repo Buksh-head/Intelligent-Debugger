@@ -50,35 +50,42 @@ If environment variables are needed, provide an example file such as:
 
    PowerShell: `Copy-Item .env.example .env`
 
-2. Get the real database password: Supabase dashboard → the project (ref `wqfpnncfzhgkidgbpngd`) → **Project Settings → Database**, and fill it into `DATABASE_URL` in your `.env`. Fill in any other real values (e.g. `HF_TOKEN`). Never commit `.env`.
+2. Get the real database password: Supabase dashboard → the project (ref `wqfpnncfzhgkidgbpngd`) → **Project Settings → Database**, and fill it into `DATABASE_URL` in your `.env`. Keep the shared pooler host from `.env.example` (`aws-0-ap-southeast-2.pooler.supabase.com:6543`); only replace the password. Fill in any other real values (e.g. `HF_TOKEN`). Never commit `.env`.
 3. From this `deployment/` folder, run:
 
    ```bash
    docker compose up --build
    ```
 
-4. This starts three containers:
+4. This starts three long-running containers and one setup job:
    - **`backend`** : FastAPI on `http://localhost:8000` (`/health` should return `{"status": "ok"}`), connected to the shared Supabase Postgres via `DATABASE_URL`
    - **`frontend`** : React/Vite on `http://localhost:5173`
    - **`piston`** : the code-execution sandbox on `http://localhost:2000`
+   - **`piston-setup`** : a one-shot job that prepares the sandbox's Python runtime, then exits (see step 5)
 
-5. **One-time step**: Piston starts with no language runtimes installed. Install Python once per fresh setup:
+5. **Sandbox runtime (automatic)**: Piston starts with no language runtimes installed, so `piston-setup` runs `deployment/piston/setup_runtime.py` on every `docker compose up`. There is no manual install step. It:
+   1. installs the Python 3.12.0 runtime through the Piston API if it is missing,
+   2. `pip install`s the modules in `deployment/piston/requirements.txt` into that runtime,
+   3. limits numpy's maths library to one thread (otherwise `import numpy` alone uses most of the sandbox's 3 second CPU limit),
+   4. runs a smoke check through the Piston execution API that imports the modules and saves a plot.
 
-   ```bash
-   curl -X POST http://localhost:2000/api/v2/packages \
-     -H "Content-Type: application/json" \
-     -d '{"language": "python", "version": "3.12.0"}'
-   ```
+   The `backend` container waits for this job to finish successfully. On a fresh `piston-packages` volume the first run downloads the runtime and modules (needs internet access, typically one to a few minutes); later runs take a few seconds because everything persists in that volume. If the job fails, the backend does not start; read the reason with `docker compose logs piston-setup`.
 
-   PowerShell doesn't have a real `curl` (it's an alias for `Invoke-WebRequest` with different syntax); use this instead:
+   **Supported Python modules in the sandbox**
 
-   ```powershell
-   Invoke-RestMethod -Uri http://localhost:2000/api/v2/packages -Method Post -ContentType "application/json" -Body '{"language": "python", "version": "3.12.0"}'
-   ```
+   | Module | Source |
+   | --- | --- |
+   | `numpy` (1.26.x) | bundled with the Piston Python 3.12.0 runtime, pinned below 2 in `requirements.txt` |
+   | `pandas`, `scipy` | bundled with the Piston Python 3.12.0 runtime |
+   | `matplotlib` | installed from `requirements.txt` |
 
-   This persists in a named Docker volume (`piston-packages`), so you only need to redo it if that volume is removed (e.g. `docker compose down -v`).
+   The sandbox has no display, so matplotlib uses its non-interactive `Agg` backend: `plt.savefig(...)` works and `plt.show()` does nothing.
 
-6. Verify everything's up: `docker compose ps` should show all three containers as `Up`.
+   **Adding a module**: add it to `deployment/piston/requirements.txt`, add its import to `SMOKE_CHECK_SOURCE` in `deployment/piston/setup_runtime.py`, then run `docker compose up piston-setup`.
+
+   **Re-running the check by hand**: `docker compose up piston-setup` (exit code 0 means the modules run inside the sandbox). With the stack up, `pytest tests/integration` runs the same check from the host.
+
+6. Verify everything's up: `docker compose ps` should show `backend`, `frontend` and `piston` as `Up` (`piston-setup` has exited by then; `docker compose ps -a` shows it as `Exited (0)`).
 
 ### First time setting up the database (only if you're bootstrapping a new/empty Supabase project)
 
@@ -86,7 +93,7 @@ Skip this if you're joining the existing team project: the shared schema is alre
 
 ### Instructor login one-time setup (Supabase Auth)
 
-Only needs to be done once for the shared Supabase project (like the schema and Piston steps above).
+Only needs to be done once for the shared Supabase project (like the schema step above).
 
 1. In the Supabase dashboard, go to **Authentication -> Providers** and confirm **Email** is enabled (on by default).
 2. Go to **Project Settings -> API** and copy the **anon public** key into `VITE_SUPABASE_ANON_KEY` in your `.env`. `SUPABASE_URL` is the same project URL you already have (no extra dashboard lookup); the backend uses it to fetch Supabase's public JWKS and verify instructor JWTs (signed with ES256), so there's no shared secret to copy or protect.
@@ -116,11 +123,14 @@ Only needs to be done once for the shared Supabase project (like the schema and 
 
 ## Troubleshooting
 
+- **Backend returns 500 with `failed to resolve host 'db.wqfpnncfzhgkidgbpngd.supabase.co'`**: your `.env` still uses Supabase's direct database host, which is IPv6 only and usually unreachable from Docker. Copy the `DATABASE_URL` format from `.env.example` (the shared pooler host on port 6543) and put your password into it.
 - **Backend can't connect to the database**: double check `DATABASE_URL` in your `.env` has the real password (not the `[YOUR-DB-PASSWORD]` placeholder) and that the Supabase project is active (free-tier projects can pause after a week of inactivity; the dashboard will show a "Restore" button if so).
 - **Frontend container fails with `main.tsx` missing / not found**: this was a real bug: `deployment/docker-compose.yml` used to build the frontend from `src/frontend`, which is a stale early scaffold with no `main.tsx`. The actual app lives in `src/frontend/src/debugging-assistant-ui/`, and the compose file now points there. If you still hit this, you're likely on an older checkout, so `git pull` and rebuild with `docker compose build --no-cache frontend`. You should not need to delete the container and fall back to running `npm run dev` manually anymore.
 - **Manual/non-Docker frontend run** (e.g. Docker is slow or unavailable): `cd` into `src/frontend/src/debugging-assistant-ui` (not `src/frontend`, which is the stale scaffold and has no `main.tsx`), then `npm install` and `npm run dev`. Requires Node 20+ locally. On Windows, if `npm run dev` says `'vite' is not recognized`, it almost always means `npm install` didn't complete in that folder (or was run in the wrong folder); re-run `npm install` there and confirm `node_modules/.bin/vite` exists before trying `npm run dev` again.
 - **Frontend fails with `Failed to resolve import "<package>"` after pulling new frontend dependencies**: Docker Compose reuses the frontend's anonymous `node_modules` volume across container recreation by default, so `docker compose up --build` alone can leave a stale, pre-existing container running old dependencies even after the image is rebuilt. Force a fresh volume with `docker compose up -d --build --force-recreate -V frontend` (the `-V` flag renews anonymous volumes) whenever `package.json` changes.
-- **Piston install/execute calls fail**: confirm the container is up (`docker logs piston_api`, look for `API server started on 0.0.0.0:2000`) and that you ran the one-time Python install step above.
+- **Piston install/execute calls fail**: confirm the container is up (`docker logs piston_api`, look for `API server started on 0.0.0.0:2000`) and that the setup job succeeded (`docker compose logs piston-setup`, look for `Piston smoke check passed`).
+- **`piston-setup` fails with `Time limit exceeded` in its smoke check**: Piston was already running jobs before the setup changed its runtime settings, and it only reads them on a runtime's first job. Run `docker compose restart piston`, then `docker compose up` again.
+- **Student code fails with `ModuleNotFoundError`**: the module is not in the supported list above. Add it as described in step 5.
 
 ## Known Limitations
 
