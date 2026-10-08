@@ -16,6 +16,7 @@ from fastapi import Header, HTTPException
 
 @lru_cache
 def _jwks_client() -> jwt.PyJWKClient:
+    """Client that fetches Supabase's public keys. Created once and reused."""
     supabase_url = os.environ.get("SUPABASE_URL")
     if not supabase_url:
         raise RuntimeError("SUPABASE_URL must be set to verify instructor logins")

@@ -39,7 +39,16 @@ def get_engine():
     if _engine is None:
         # pool_pre_ping: Supabase's pooler drops idle connections; this
         # validates a pooled connection before reuse and reconnects if dead.
-        _engine = create_engine(_sqlalchemy_url(), pool_pre_ping=True)
+        # prepare_threshold=None: psycopg otherwise turns a query into a
+        # server-side prepared statement after 5 runs on one connection. The
+        # pooler shares server connections between clients in transaction
+        # mode, so those statements clash or go missing and the query fails
+        # (issue #129).
+        _engine = create_engine(
+            _sqlalchemy_url(),
+            pool_pre_ping=True,
+            connect_args={"prepare_threshold": None},
+        )
     return _engine
 
 

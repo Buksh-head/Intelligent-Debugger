@@ -1,12 +1,19 @@
+/**
+ * Landing page. Students pick a course and language to start an anonymous
+ * session. Instructors sign in or register. Students can also delete
+ * data from a past session using a saved session ID.
+ */
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { deleteStudentData } from '../api';
 import { useAuth } from '../auth/useAuth';
-import { ChevronDown } from 'lucide-react';
 import { useStudentSession } from '../session/useStudentSession';
 
 type Role = 'student' | 'instructor';
 type InstructorMode = 'login' | 'register';
+type PastDeleteStatus = 'idle' | 'deleting' | 'done';
 
+// Default language for each course. The student can still change it.
 const courseLanguages: Record<string, string> = {
   CSSE1001: 'Python',
   CSSE2002: 'Java',
@@ -14,59 +21,9 @@ const courseLanguages: Record<string, string> = {
   DECO1800: 'JavaScript',
 };
 
-type DropdownOption = { value: string; label: string };
-
-function TailwindDropdown({
-  value,
-  placeholder,
-  options,
-  onChange,
-}: {
-  value: string;
-  placeholder: string;
-  options: DropdownOption[];
-  onChange: (value: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-
-  const selectedOption = options.find((option) => option.value === value);
-
-  return (
-    <div className="relative w-full">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex h-12 w-full items-center justify-between rounded-full border border-base-content/20 bg-base-100 px-4 text-left text-sm text-base-content hover:border-primary"
-      >
-        <span className={selectedOption ? '' : 'text-base-content/60'}>
-          {selectedOption?.label ?? placeholder}
-        </span>
-        <ChevronDown size={16} aria-hidden="true" />
-      </button>
-
-      {open && (
-        <ul className="absolute z-30 mt-2 w-full rounded-2xl border border-base-content/15 bg-base-100 p-1 shadow-xl">
-          {options.map((option) => (
-            <li key={option.value}>
-              <button
-                type="button"
-                className={`w-full rounded-lg px-3 py-2 text-left hover:bg-base-200 ${
-                  option.value === value ? 'active' : ''
-                }`}
-                onClick={() => {
-                  onChange(option.value);
-                  setOpen(false);
-                }}
-              >
-                {option.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
+// Session IDs are UUIDs from crypto.randomUUID(). Checking the shape here
+// gives the student a clear message for a mistyped ID instead of a server error.
+const sessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default function WelcomePage() {
   const navigate = useNavigate();
@@ -74,6 +31,8 @@ export default function WelcomePage() {
   const { startSession } = useStudentSession();
   const [role, setRole] = useState<Role>('student');
   const [instructorMode, setInstructorMode] = useState<InstructorMode>('login');
+
+  // Instructor email (named userId, but it holds an email). 
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -83,29 +42,37 @@ export default function WelcomePage() {
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Deleting data from a past session, using an ID the student saved (#23).
+  const [showPastDelete, setShowPastDelete] = useState(false);
+  const [pastSessionId, setPastSessionId] = useState('');
+  const [pastDeleteStatus, setPastDeleteStatus] = useState<PastDeleteStatus>('idle');
+  const [pastDeleteError, setPastDeleteError] = useState('');
+
+  // Text for the left panel and form heading, based on the selected tab.
   const roleContent = role === 'student'
     ? {
-        eyebrow: 'Intelligent Debugging Assistant',
-        title: 'Learn to debug with confidence.',
-        description: 'Work through your own code with staged hints, clear explanations, and small experiments that build lasting debugging skills.',
-        features: ['Progressive hints', 'Better feedback'],
-        welcome: 'Start a debugging session',
-        prompt: 'Choose your course and programming language.',
-      }
+      eyebrow: 'Intelligent Debugging Assistant',
+      title: 'Learn to debug with confidence.',
+      description: 'Work through your own code with staged hints, clear explanations, and small experiments that build lasting debugging skills.',
+      features: ['Progressive hints', 'Better feedback'],
+      welcome: 'Start a debugging session',
+      prompt: 'Choose your course and programming language.',
+    }
     : {
-        eyebrow: 'Intelligent Debugging Assistant',
-        title: 'See where students get stuck.',
-        description: 'Review anonymous cohort patterns, recurring errors, and common misconceptions to support more targeted teaching.',
-        features: ['Cohort insights', 'Targeted teaching insights'],
-        welcome: 'Instructor access',
-        prompt: instructorMode === 'login' ? 'Sign in to view your cohort dashboard.' : 'Register to view your cohort dashboard.',
-      };
+      eyebrow: 'Intelligent Debugging Assistant',
+      title: 'See where students get stuck.',
+      description: 'Review anonymous cohort patterns, recurring errors, and common misconceptions to support more targeted teaching.',
+      features: ['Cohort insights', 'Targeted teaching insights'],
+      welcome: 'Instructor access',
+      prompt: instructorMode === 'login' ? 'Sign in to view your cohort dashboard.' : 'Register to view your cohort dashboard.',
+    };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
     setMessage('');
 
+    // Instructor sign in
     if (role === 'instructor' && instructorMode === 'login') {
       setIsSubmitting(true);
       try {
@@ -123,6 +90,7 @@ export default function WelcomePage() {
       return;
     }
 
+    // Instructor registration  
     if (role === 'instructor') {
       if (password.length < 6) {
         setError('Password must be at least 6 characters.');
@@ -142,7 +110,7 @@ export default function WelcomePage() {
         setInstructorMode('login');
         setPassword('');
         setConfirmPassword('');
-        setMessage('Account created. Check your email if confirmation is required, then sign in.');
+        setMessage('Account created. Confirm your email, then sign in.');
       } catch {
         setError('Unable to create the account. Please try again.');
       } finally {
@@ -151,6 +119,7 @@ export default function WelcomePage() {
       return;
     }
 
+    // Student: start a new anonymous session    
     if (!course) {
       setError('Please select the course you need help with.');
       return;
@@ -158,6 +127,38 @@ export default function WelcomePage() {
 
     startSession({ course, language });
     navigate('/student');
+  };
+
+  // Open the "delete past session" popup.
+  const openPastDelete = () => {
+    setPastSessionId('');
+    setPastDeleteStatus('idle');
+    setPastDeleteError('');
+    setShowPastDelete(true);
+  };
+
+  const closePastDelete = () => {
+    if (pastDeleteStatus === 'deleting') return;
+    setShowPastDelete(false);
+  };
+
+  // The backend replies the same way whether or not the session had data,
+  // so the success message can't say for certain that something was deleted.
+  const handlePastDelete = async () => {
+    const id = pastSessionId.trim();
+    if (!sessionIdPattern.test(id)) {
+      setPastDeleteError("That doesn't look like a session ID. It should look like 3f2a9c1b-7d4e-4b8a-9c6f-1e2d3c4b5a69.");
+      return;
+    }
+    setPastDeleteStatus('deleting');
+    setPastDeleteError('');
+    try {
+      await deleteStudentData(id);
+      setPastDeleteStatus('done');
+    } catch {
+      setPastDeleteError('Could not reach the server. Please try again.');
+      setPastDeleteStatus('idle');
+    }
   };
 
   return (
@@ -220,39 +221,38 @@ export default function WelcomePage() {
                 <>
                   <label className="form-control w-full gap-0">
                     <span className="label-text block pb-2 text-sm font-medium">What course do you need help with?</span>
-                    <TailwindDropdown
+                    <select
+                      className="select select-bordered h-12 w-full bg-base-100 text-base-content"
                       value={course}
-                      placeholder="Select a course"
-                      options={[
-                        { value: 'CSSE1001', label: 'CSSE1001 Introduction to Software Engineering' },
-                        { value: 'CSSE2002', label: 'CSSE2002 Programming in the Large' },
-                        { value: 'ENGG1001', label: 'ENGG1001 Introduction to Engineering' },
-                        { value: 'DECO1800', label: 'DECO1800 Design Computing' },
-                      ]}
-                      onChange={(selectedCourse) => {
+                      onChange={(event) => {
+                        const selectedCourse = event.target.value;
                         setCourse(selectedCourse);
                         setLanguage(courseLanguages[selectedCourse] ?? 'Python');
                       }}
-                    />
+                    >
+                      <option value="" disabled>Select a course</option>
+                      <option value="CSSE1001">CSSE1001 Introduction to Software Engineering</option>
+                      <option value="CSSE2002">CSSE2002 Programming in the Large</option>
+                      <option value="ENGG1001">ENGG1001 Introduction to Engineering</option>
+                      <option value="DECO1800">DECO1800 Design Computing</option>
+                    </select>
                   </label>
 
                   <label className="form-control w-full gap-0">
                     <span className="label-text block pb-2 text-sm font-medium">Programming language</span>
-                    <TailwindDropdown
+                    <select
+                      className="select select-bordered h-12 w-full bg-base-100 text-base-content"
                       value={language}
-                      placeholder="Select a programming language"
-                      options={[
-                        { value: 'Python', label: 'Python' },
-                        { value: 'Java', label: 'Java' },
-                        { value: 'JavaScript', label: 'JavaScript' },
-                      ]}
-                      onChange={setLanguage}
-                    />
+                      onChange={(event) => setLanguage(event.target.value)}
+                    >
+                      <option value="Python">Python</option>
+                      <option value="Java">Java</option>
+                      <option value="JavaScript">JavaScript</option>
+                    </select>
                   </label>
                 </>
               ) : (
                 <>
-                  {message && <p className="text-sm text-success">{message}</p>}
                   <label className="form-control w-full gap-2">
                     <span className="label-text block pb-2 text-sm font-medium">{instructorMode === 'register' ? 'Create password' : 'Password'}</span>
                     <input
@@ -282,7 +282,11 @@ export default function WelcomePage() {
                 </>
               )}
 
-              {error && <p className="text-sm text-error">{error}</p>}
+              {(error || message) && (
+                <p className={`relative -top-2 text-sm ${error ? 'text-error' : 'text-success'}`}>
+                  {error || message}
+                </p>
+              )}
               <div className="mt-auto h-12 w-full lg:absolute lg:bottom-[72px] lg:left-12 lg:right-12 lg:w-auto">
                 <button type="submit" className="btn btn-primary h-12 w-full">
                   {isSubmitting ? (instructorMode === 'login' ? 'Signing in...' : 'Creating account...') : role === 'student' ? 'Continue as student' : instructorMode === 'login' ? 'Continue as instructor' : 'Create instructor account'}
@@ -296,10 +300,76 @@ export default function WelcomePage() {
                   {instructorMode === 'login' ? 'Register' : 'Sign in'}
                 </button>
               </p>
-            ) : <div className="mt-4 min-h-5" aria-hidden="true" />}
+            ) : (
+              <p className="mt-4 min-h-5 text-center text-sm">
+                <button type="button" className="link text-base-content/60 hover:text-base-content" onClick={openPastDelete}>
+                  Delete data from a past session
+                </button>
+              </p>
+            )}
           </div>
         </section>
       </main>
+      
+      {/* Popup for deleting data from a past session */} 
+      {showPastDelete && (
+        <div className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="past-delete-title">
+          <div className="modal-box">
+            <h3 id="past-delete-title" className="text-lg font-bold">Delete data from a past session</h3>
+
+            {pastDeleteStatus === 'done' ? (
+              <>
+                <p className="py-3 text-sm">
+                  Done. If any data was stored under that session ID, it has been deleted.
+                </p>
+                <div className="modal-action">
+                  <button type="button" className="btn btn-primary" onClick={closePastDelete}>
+                    Close
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="py-3 text-sm">
+                  Paste the session ID you saved. This deletes the code, errors and hints from that session. It can't be undone.
+                </p>
+                <input
+                  type="text"
+                  className="input input-bordered w-full font-mono text-sm"
+                  placeholder="e.g. 3f2a9c1b-7d4e-4b8a-9c6f-1e2d3c4b5a69"
+                  value={pastSessionId}
+                  onChange={(event) => {
+                    setPastSessionId(event.target.value);
+                    setPastDeleteError('');
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      handlePastDelete();
+                    }
+                  }}
+                  disabled={pastDeleteStatus === 'deleting'}
+                  autoFocus
+                />
+                {pastDeleteError && <p className="mt-2 text-sm text-error">{pastDeleteError}</p>}
+                <div className="modal-action">
+                  <button type="button" className="btn" onClick={closePastDelete} disabled={pastDeleteStatus === 'deleting'}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-error"
+                    onClick={handlePastDelete}
+                    disabled={pastDeleteStatus === 'deleting' || !pastSessionId.trim()}
+                  >
+                    {pastDeleteStatus === 'deleting' ? <span className="loading loading-spinner loading-sm"></span> : 'Delete'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

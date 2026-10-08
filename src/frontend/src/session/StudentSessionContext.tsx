@@ -1,6 +1,11 @@
+/**
+ * Stores the anonymous student session (ID, course and language) and
+ * shares it with the rest of the app.
+ */
 import { useState, type ReactNode } from 'react';
 import { StudentSessionContext, type StudentContext, type StudentSession } from './context';
 
+// sessionStorage keys. Changing these logs out anyone mid-session.
 const contextStorageKey = 'debugging-assistant.student-context';
 const sessionIdStorageKey = 'debugging-assistant.session-id';
 
@@ -35,6 +40,7 @@ export function StudentSessionProvider({ children }: { children: ReactNode }) {
     setSession(next);
   };
 
+  // Clears the session from this tab only.
   const endSession = () => {
     sessionStorage.removeItem(contextStorageKey);
     sessionStorage.removeItem(sessionIdStorageKey);

@@ -3,7 +3,12 @@ assistant API. These are separate from the table models in
 app/services/db.py, same library, different job: these describe what
 JSON goes over HTTP, db.py's describe what's stored in Postgres.
 """
+from typing import Literal
+
 from sqlmodel import SQLModel
+
+# Feedback mode picked in the UI (see issue #95). "hints" is the default.
+FeedbackMode = Literal["hints", "socratic"]
 
 
 class SubmissionRequest(SQLModel):
@@ -47,6 +52,7 @@ class HintRequest(SQLModel):
     execution: ExecutionResponse
     student_message: str = "" # What the student said in response to the hint, used for stage classification
     previous_hint: str = "" # The previous hint given to the student, used for stage classification
+    mode: FeedbackMode = "hints" # Which feedback mode to serve; socratic ignores the two fields above
 
 class HintStage(SQLModel):
     stage: int
@@ -57,11 +63,39 @@ class HintStage(SQLModel):
     resource_label: str | None = None # The label of the resource offered to the student, if any
     gate_on_url: bool = False # Whether the resource is gated (i.e., the student must view it before advancing)
 
+class SocraticAnswer(SQLModel):
+    """The direct answer served in socratic mode. Mirrored in src/frontend/src/types.ts."""
+    diagnosis: str | None = None
+    fix: str | None = None
+
+class Attribution(SQLModel):
+    """One thing that pointed the classifier at the misconception it chose.
+
+    ``feature`` is the internal name; ``label`` is the only part a student sees.
+    """
+    feature: str
+    label: str
+    weight: float
+
+class Explanation(SQLModel):
+    """How the system reached its diagnosis (#67). Every field is optional and
+    the whole object is nullable: when the explanation layer fails the answer
+    still ships. Mirrored in src/frontend/src/types.ts.
+    """
+    reasoning: str | None = None
+    misconception: str | None = None
+    confidence: float | None = None
+    attributions: list[Attribution] | None = None
+    counterfactual_question: str | None = None
+
 class HintResponse(SQLModel):
     status: str
     execution: ExecutionResponse
     finding: Finding
+    # Hints mode fills `hints`; socratic mode fills `answer` and leaves `hints` empty.
     hints: list[HintStage]
+    answer: SocraticAnswer | None = None
+    explanation: Explanation | None = None # socratic mode only for now
 
 
 class AnalyticsConcept(SQLModel):
@@ -105,3 +139,18 @@ class AnalyticsResponse(SQLModel):
     recurring_errors: list[AnalyticsError]
     details: dict[str, AnalyticsConceptDetail]
 
+class InsightStats(SQLModel):
+    error_type: str
+    data_window: str
+    total_errors: int
+    distinct_sessions: int | None = None
+    daily_counts: list[AnalyticsChartPoint]
+    message_breakdown: list[AnalyticsError]
+    outcomes: list[AnalyticsOutcome]
+    related_concepts: list[AnalyticsError] = []
+    
+class InsightsResponse(SQLModel):
+    error_type: str
+    summary: str
+    low_data: bool = False
+    generated: bool = True

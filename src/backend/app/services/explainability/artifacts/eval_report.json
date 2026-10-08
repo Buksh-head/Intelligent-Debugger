@@ -1,0 +1,14 @@
+{
+  "seed": 42,
+  "test_size": 0.2,
+  "headline_accuracy": 0.8148148148148148,
+  "headline_n": 54,
+  "ambiguous_accuracy": 0.5,
+  "ambiguous_n": 4,
+  "collision_accuracy": 0.5384615384615384,
+  "collision_n": 13,
+  "held_out_lookup_baseline_accuracy": 0.4074074074074074,
+  "dataset_sha256": "558e0952a150a00fc3119a72dab0b9fa7e2e7bf9fb3a3eab056ae6a34f72d8e1",
+  "dataset_rows": 266,
+  "sklearn_version": "1.9.1"
+}

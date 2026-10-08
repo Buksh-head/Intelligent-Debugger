@@ -18,12 +18,14 @@ export interface ExecutionResponse {
   error_id: number | null;
 }
 
+// Info sent back to the hints endpoint to say which error to help with.
 export interface Finding {
   error_type: string;
   line_number: number | null;
   failing_code_snippet: string;
 }
 
+// One step of the staged hint chat.
 export interface HintStage {
   stage: number;
   text: string | null;
@@ -34,11 +36,35 @@ export interface HintStage {
   gate_on_url: boolean;           // true while the student still owes the check answer
 }
 
+export type FeedbackMode = 'hints' | 'socratic';
+
+export interface SocraticAnswer {
+  diagnosis: string | null;  // what the code does and why it fails
+  fix: string | null;        // the change that resolves it, may contain code
+}
+
+export interface Attribution {
+  feature: string;
+  label: string;   // the only part a student sees
+  weight: number;
+}
+
+// Every field may be missing; the whole object is null when the explanation layer fails.
+export interface Explanation {
+  reasoning: string | null;
+  misconception: string | null;
+  confidence: number | null;
+  attributions: Attribution[] | null;
+  counterfactual_question: string | null;
+}
+
 export interface HintResponse {
   status: string;
   execution: ExecutionResponse;
   finding: Finding;
-  hints: HintStage[];
+  hints: HintStage[];              // empty in socratic mode
+  answer: SocraticAnswer | null;   // only set in socratic mode
+  explanation?: Explanation | null; // only set in socratic mode
 }
 
 export interface AnalyticsError {
@@ -50,7 +76,7 @@ export interface AnalyticsOutcome {
   label: string;
   count: number;
   percent: number;
-  tone: string;
+  tone: string; // 'resolved', 'attempted' or anything else
 }
 
 export interface AnalyticsConcept {
@@ -70,6 +96,7 @@ export interface AnalyticsConceptDetail {
   note: string;
 }
 
+// Stats for the instructor dashboard.
 export interface AnalyticsResponse {
   analysed_sessions: number;
   detected_errors: number;
@@ -78,4 +105,5 @@ export interface AnalyticsResponse {
   details: Record<string, AnalyticsConceptDetail>;
 }
 
+// The semester option is hardcoded and will need updating each semester.
 export type AnalyticsDateRange = 'today' | 'last_7_days' | 'last_month' | 'semester_2_2026';

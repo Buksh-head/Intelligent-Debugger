@@ -8,3 +8,9 @@ sqlmodel>=0.0.14,<1.0
 PyJWT>=2.8,<3.0
 cryptography>=42,<47
 openai>=1.30,<2.0
+scikit-learn>=1.9,<2.0
+joblib>=1.6,<2.0
+pandas>=3.0,<4.0
+# shap, lime and dice-ml are dev-only (tests/backend/requirements.txt): the
+# served path computes linear SHAP with numpy and never loads LIME or DiCE,
+# which keeps the Vercel function under its 500MB limit.

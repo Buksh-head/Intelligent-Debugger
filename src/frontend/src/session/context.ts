@@ -1,5 +1,9 @@
+/**
+ * Types and context for the anonymous student session.
+ */
 import { createContext } from 'react';
 
+// What the student picks on the setup page.
 export type StudentContext = {
   course: string;
   language: string;

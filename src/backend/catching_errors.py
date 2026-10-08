@@ -26,7 +26,7 @@ def capture_and_print_errors(student_code: str):
             [sys.executable, '-c', student_code],
             capture_output=True,
             text=True,
-            timeout=20.0 # Force quit after 2 seconds
+            timeout=2.0 # Force quit after 2 seconds
         )
         
         # Check if the program crashed while running

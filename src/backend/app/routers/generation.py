@@ -2,12 +2,13 @@
 from fastapi import APIRouter, HTTPException
 
 from sqlmodel import Session
-from app.services.hint_generator import generate_hint
+from app.services.hint_generator import generate_hint, generate_socratic_answer
 from app.services.stage_classifier import classify_student_message, resolve_next_stage, Stage
 from app.services.learning_resources import detect_concept, get_resource
 from app.services.db import get_engine
-from app.db_models import ErrorLog
-from app.models import HintRequest, HintResponse, HintStage
+from app.services.explainability.service import build_explanation
+from app.db_models import ErrorLog, Submission
+from app.models import HintRequest, HintResponse, HintStage, SocraticAnswer
 
 router = APIRouter(prefix="/api",tags=["generation"])
 
@@ -21,8 +22,39 @@ def create_hint(request: HintRequest) -> HintResponse:
         error_log = session.get(ErrorLog, request.error_id)
         if not error_log:
             raise HTTPException(status_code=404, detail="Error not found")
+        if request.mode == "socratic":
+            # One turn, so no stage classification and nothing written back.
+            message = error_log.message or ""
+            eval_doc = generate_socratic_answer(
+                findings={**request.finding.model_dump(), "message": message},
+            )
+            answer = None
+            explanation = None
+            if eval_doc.success:
+                answer = SocraticAnswer(diagnosis=eval_doc.diagnosis or None, fix=eval_doc.fix or None)
+                # The classifier parses the whole program, not the failing line.
+                submission = session.get(Submission, error_log.submission_id)
+                if submission is not None:
+                    # build_explanation returns None rather than raising, so the
+                    # answer always ships. No counterfactual: the fix is already given.
+                    explanation = build_explanation(
+                        code=submission.code,
+                        error_type=request.finding.error_type,
+                        message=message,
+                        timed_out=request.execution.timed_out,
+                        reasoning=eval_doc.reasoning,
+                        include_counterfactual=False,
+                    )
+            return HintResponse(
+                status="success" if eval_doc.success else "error",
+                execution=request.execution,
+                finding=request.finding,
+                hints=[],
+                answer=answer,
+                explanation=explanation,
+            )
 
-        current_stage = min(error_log.hint_stage_reached or 1, Stage.REVEAL)
+        current_stage = min(error_log.hint_stage_reached or 1, Stage.REDIRECT)
         vague_attempts = error_log.vague_attempts_this_stage or 0
 
         # No previous_hint means the student hasn't been given a task to

@@ -1,3 +1,7 @@
+/**
+ * Hook for reading the student session, e.g. const { session } = useStudentSession().
+ * Throws if used outside StudentSessionProvider.
+ */
 import { useContext } from 'react';
 import { StudentSessionContext, type StudentSessionContextValue } from './context';
 

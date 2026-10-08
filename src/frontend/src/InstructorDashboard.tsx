@@ -1,14 +1,29 @@
+/**
+ * Instructor dashboard. Shows anonymous error stats across the cohort,
+ * filtered by course and date range. Clicking an error type opens a
+ * detail view with a chart, outcomes and an AI-generated summary.
+ */
 import { useEffect, useMemo, useState } from 'react'
 import { getCohortAnalytics } from './api'
 import type { AnalyticsConcept, AnalyticsDateRange, AnalyticsResponse } from './types'
 import pythonLogo from './assets/python.jpg'
 import { ArrowLeft, ArrowRight, ChevronDown, LogOut, Sun, Moon, User } from 'lucide-react'
-
 type InstructorDashboardProps = {
   onBack: () => void
 }
 
+// AI summary for one error type, from /api/analytics/insights.
+type InsightsResponse = {
+  error_type: string
+  summary: string
+  low_data: boolean // true when there's too little data to be reliable
+  generated: boolean // true when the summary came from the LLM 
+}
+
+// Courses in the class filter. Keep in sync with WelcomePage.
 const courseCodes = ['CSSE1001', 'CSSE2002', 'ENGG1001', 'DECO1800']
+
+// Theme setup, copied from App.tsx. Both share the same saved theme.
 const themeOptions = [
   { label: 'Light', value: 'light' },
   { label: 'Dark', value: 'dark' },
@@ -16,20 +31,17 @@ const themeOptions = [
   { label: 'Luxury', value: 'luxury' },
   { label: 'Forest', value: 'forest' },
 ] as const
-
 type Theme = (typeof themeOptions)[number]['value']
 const themeStorageKey = 'debugging-assistant.theme'
-
 const getInitialTheme = (): Theme => {
   const savedTheme = localStorage.getItem(themeStorageKey)
   const savedOption = themeOptions.find((option) => option.value === savedTheme)
   if (savedOption) return savedOption.value
-
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
-
 export default function InstructorDashboard({ onBack }: InstructorDashboardProps) {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
+  // The error type being viewed.
   const [selectedConcept, setSelectedConcept] = useState<string | null>(() => (
     new URLSearchParams(window.location.search).get('concept')
   ))
@@ -37,28 +49,34 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
   const [course, setCourse] = useState('')
   const [analytics, setAnalytics] = useState<AnalyticsResponse | null>(null)
   const [analyticsError, setAnalyticsError] = useState<string | null>(null)
+  const [insight, setInsight] = useState<InsightsResponse | null>(null)
+  const [insightLoading, setInsightLoading] = useState(false)
+  const [insightError, setInsightError] = useState<string | null>(null)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem(themeStorageKey, theme)
   }, [theme])
 
+  // Update the selected error type when the back/forward button is used.
   useEffect(() => {
     const handlePopState = () => {
       setSelectedConcept(new URLSearchParams(window.location.search).get('concept'))
     }
-
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
+  // Reload the stats whenever the course or date range changes.
   useEffect(() => {
     getCohortAnalytics(dateRange, course || undefined)
       .then(setAnalytics)
       .catch((error: unknown) => setAnalyticsError(error instanceof Error ? error.message : 'Unable to load cohort analytics.'))
   }, [course, dateRange])
 
-    const activeConcept = useMemo(() => {
+  // Details for the selected error type. If it has no data in this
+  // date range, show an empty view instead of an error. 
+  const activeConcept = useMemo(() => {
     if (!selectedConcept || !analytics) return null
 
     return analytics.details[selectedConcept] ?? {
@@ -73,6 +91,54 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
     }
   }, [analytics, selectedConcept])
 
+  // Get the AI summary for the selected error type.
+  useEffect(() => {
+    if (!activeConcept || !analytics?.details[selectedConcept ?? '']) {
+      setInsight(null)
+      setInsightError(null)
+      setInsightLoading(false)
+      return
+    }
+    const controller = new AbortController()
+    const loadInsight = async () => {
+      try {
+        setInsightLoading(true)
+        setInsightError(null)
+        setInsight(null)
+        const apiUrl = import.meta.env.VITE_API_URL ?? ''
+        const params = new URLSearchParams({
+          date_range: dateRange,
+        })
+        if (course) {
+          params.set('course', course)
+        }
+        const response = await fetch(
+          `${apiUrl}/api/analytics/insights/${encodeURIComponent(activeConcept.title)}?${params.toString()}`,
+          { signal: controller.signal },
+        )
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`)
+        }
+        const data: InsightsResponse = await response.json()
+        setInsight(data)
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return
+        }
+        setInsightError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to generate instructor insight.',
+        )
+      } finally {
+        if (!controller.signal.aborted) {
+          setInsightLoading(false)
+        }
+      }
+    }
+    loadInsight()
+    return () => controller.abort()
+  }, [activeConcept, course, dateRange])
   const concepts: AnalyticsConcept[] = analytics?.concepts ?? []
   const overviewStats = analytics
     ? [
@@ -82,6 +148,8 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
       ]
     : []
 
+  // Bar chart sizing, in SVG units. Only every few labels are shown so
+  // they don't overlap.
   const chartPoints = activeConcept?.chart_points ?? []
   const chartMax = Math.max(...chartPoints.map((point) => point.count), 1)
   const chartWidth = 455
@@ -89,16 +157,12 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
   const chartLeft = 48
   const chartTop = 12
   const chartBottom = chartTop + chartHeight
-  const chartStep = chartPoints.length > 1 ? chartWidth / (chartPoints.length - 1) : chartWidth
-  const chartPath = chartPoints
-    .map((point, index) => {
-      const x = chartLeft + index * chartStep
-      const y = chartBottom - (point.count / chartMax) * chartHeight
-      return `${index === 0 ? 'M' : 'L'} ${x} ${y}`
-    })
-    .join(' ')
+  const chartStep = chartPoints.length > 0 ? chartWidth / chartPoints.length : chartWidth
+  const barWidth = chartPoints.length > 0
+    ? Math.min(46, Math.max(18, chartStep * 0.62))
+    : 0
+  const labelStep = Math.max(1, Math.ceil(chartPoints.length / 8))
   const yTicks = Array.from({ length: 5 }, (_, index) => Math.round((chartMax * index) / 4))
-
   return (
     <div className="min-h-screen w-full bg-base-100 p-5 text-base-content">
       <header className="navbar mb-2">
@@ -175,21 +239,21 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
         </div>
       </div>
       </header>
-
       <div className="flex min-h-0">
         <main className="flex-1 bg-base-100 px-[18px] py-[18px] min-[981px]:px-8 min-[981px]:pb-4 min-[981px]:pt-6">
+          {/* Shows one of: error, loading, detail view or overview */}
           {analyticsError ? (
             <p className="rounded-xl border border-error/30 bg-error/10 p-5 text-error-content">{analyticsError}</p>
           ) : !analytics ? (
             <p className="rounded-xl border border-base-300 bg-base-200 p-5 text-base-content/70">Loading cohort analytics...</p>
           ) : activeConcept ? (
             <>
+              {/* Detail view for one error type */} 
               <div className="mb-[22px] grid gap-4 min-[981px]:grid-cols-[1fr_auto_1fr] min-[981px]:items-start min-[981px]:gap-5">
                 <div className="text-left min-[981px]:col-start-2 min-[981px]:row-start-1 min-[981px]:text-center">
                   <h1 className="text-[clamp(2rem,2.4vw,3rem)] font-bold leading-tight tracking-tight">{activeConcept.title}</h1>
                   <p className="mt-2 text-base text-base-content/65">{activeConcept.description}</p>
                 </div>
-
                 <div className="flex flex-wrap items-end gap-3.5 min-[981px]:col-start-1 min-[981px]:row-start-1 min-[981px]:pt-[22px]">
                   <button type="button" className="btn btn-outline" onClick={() => {
                     window.history.replaceState(null, '', window.location.pathname)
@@ -202,15 +266,15 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
 
                 <div className="flex min-w-[140px] flex-col gap-1.5 min-[981px]:col-start-3 min-[981px]:row-start-1 min-[981px]:justify-self-end">
                     <label className="text-xs text-base-content/70">Date range</label>
-                    <select className="select select-bordered select-sm w-full bg-base-100 text-base-content" value={dateRange} onChange={(event) => setDateRange(event.target.value as AnalyticsDateRange)}>
+                    <select className="select select-bordered h-12 w-full bg-base-100 text-base-content" value={dateRange} onChange={(event) => setDateRange(event.target.value as AnalyticsDateRange)}>
                       <option value="today">Today</option>
                       <option value="last_7_days">Last 7 days</option>
                       <option value="last_month">Last month</option>
-                      <option value="semester_2_2026">2026 Sem2</option>
+                      <option value="semester_2_2026">2026 Sem 2</option>
                     </select>
                 </div>
               </div>
-
+              {/* Chart: errors per day for this type */}
               <div className="grid gap-[18px] min-[981px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
                 <div className="min-h-[400px] rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
                   <div className="mb-1.5 text-[1.05rem] font-semibold">Error frequency over time</div>
@@ -221,27 +285,27 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                       const y = chartBottom - (index / 4) * chartHeight
                       return (
                         <g key={tick}>
-                          <line x1={chartLeft} x2={chartLeft + chartWidth} y1={y} y2={y} stroke="rgba(75,85,99,0.22)" />
-                          <text x={chartLeft - 8} y={y + 4} textAnchor="end" fill="#4b5563" className="text-[10px]">{tick}</text>
+                          <line x1={chartLeft} x2={chartLeft + chartWidth} y1={y} y2={y} stroke="currentColor" opacity="0.2" />
+                          <text x={chartLeft - 8} y={y + 4} textAnchor="end" fill="currentColor" className="text-[10px]">{tick}</text>
                         </g>
                       )
                     })}
-                    <line x1={chartLeft} x2={chartLeft} y1={chartTop} y2={chartBottom} stroke="rgba(75,85,99,0.55)" />
-                    <line x1={chartLeft} x2={chartLeft + chartWidth} y1={chartBottom} y2={chartBottom} stroke="rgba(75,85,99,0.55)" />
-                    {chartPath && <path d={chartPath} fill="none" stroke="#51247a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
+                    <line x1={chartLeft} x2={chartLeft} y1={chartTop} y2={chartBottom} stroke="currentColor" opacity="0.55" />
+                    <line x1={chartLeft} x2={chartLeft + chartWidth} y1={chartBottom} y2={chartBottom} stroke="currentColor" opacity="0.55" />
                     {chartPoints.map((point, index) => {
-                      const x = chartLeft + index * chartStep
-                      const y = chartBottom - (point.count / chartMax) * chartHeight
+                      const x = chartLeft + (index + 0.5) * chartStep
+                      const barHeight = (point.count / chartMax) * chartHeight
                       return (
                         <g key={`${point.label}-${index}`}>
-                          <circle cx={x} cy={y} r="3.5" fill="#51247a" />
-                          <text x={x} y={chartBottom + 18} textAnchor="middle" fill="#4b5563" className="text-[10px]">{point.label}</text>
+                          <rect x={x - barWidth / 2} y={chartBottom - barHeight} width={barWidth} height={barHeight} rx="3" fill="currentColor" className="text-primary" opacity="0.9" />
+                          {(index % labelStep === 0 || index === chartPoints.length - 1) && (
+                            <text x={x} y={chartBottom + 18} textAnchor="middle" fill="currentColor" className="text-[10px]">{point.label}</text>
+                          )}
                         </g>
                       )
                     })}
                   </svg>}
                 </div>
-
                 <div className="min-h-[260px] rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
                   <div className="mb-1.5 text-[1.05rem] font-semibold">Errors grouped under this type</div>
                   <ul className="mt-3.5 max-h-[260px] overflow-y-auto pr-2 list-none p-0">
@@ -254,64 +318,81 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                   </ul>
                 </div>
               </div>
-
+              {/* Outcomes: resolved, attempted or unresolved */} 
               <div className="mt-[18px] rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
                 <div className="mb-1.5 text-[1.05rem] font-semibold">Debugging assistance outcomes</div>
+                <p className="m-0 text-xs text-base-content/60">Outcome of the final recorded submission in each assistance session</p>
                 <div className="mt-[18px] flex h-7 overflow-hidden rounded-lg border border-base-300 bg-base-100">
                   {activeConcept.outcomes.map((item) => (
                     <div key={item.label} className="h-full" style={{ width: `${item.percent}%` }}>
-                      <div className={`h-full ${item.tone === 'resolved' ? 'bg-green-700' : item.tone === 'attempted' ? 'bg-amber-600' : 'bg-red-700'}`} />
+                      <div className={`h-full ${item.tone === 'resolved' ? 'bg-green-600/90' : item.tone === 'attempted' ? 'bg-amber-500/90' : 'bg-red-600/90'}`} />
                     </div>
                   ))}
                 </div>
-
                 <div className="mt-[18px] grid gap-5 min-[981px]:grid-cols-3">
                   {activeConcept.outcomes.length === 0 ? <p className="text-sm text-base-content/60">No records found</p> : activeConcept.outcomes.map((item) => (
                     <div key={item.label} className="text-base-content/80">
                       <div className="mb-2 text-xs">
-                        <strong className={`text-2xl font-semibold tracking-tight ${item.tone === 'resolved' ? 'text-green-500' : item.tone === 'attempted' ? 'text-amber-400' : 'text-red-500'}`}>{item.count}</strong> • {item.percent}%
+                        <strong className={`text-2xl font-semibold tracking-tight ${item.tone === 'resolved' ? 'text-green-400/90' : item.tone === 'attempted' ? 'text-amber-300/90' : 'text-red-400/90'}`}>{item.count}</strong> • {item.percent}%
                       </div>
                       <span>{item.label}</span>
                     </div>
                   ))}
                 </div>
               </div>
-
+              
+              {/* AI summary for instructors */}
               <div className="mt-5">
-                <div className="rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
-                  <div className="mb-1.5 text-[1.05rem] font-semibold">Related teaching topics</div>
-                  <p className="m-0 text-xs text-base-content/60">Suggested from the error taxonomy—not an automated teaching decision.</p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {activeConcept.topics.length === 0 ? <p className="text-sm text-base-content/60">No records found</p> : activeConcept.topics.map((topic) => (
-                      <span key={topic} className="badge badge-outline h-auto px-2.5 py-1.5 text-[0.85rem] text-base-content/80">
-                        {topic}
+                <div className="rounded-xl border border-primary/30 bg-base-200 p-5 pb-[18px]">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="mb-1.5 text-[1.05rem] font-semibold">Instructor insight</div>
+                      <p className="m-0 text-xs text-base-content/60">Generated from the aggregated data for this error type.</p>
+                    </div>
+                    {insight?.generated && (
+                      <span className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs text-primary">
+                        AI generated
                       </span>
-                    ))}
+                    )}
                   </div>
+                  {insightLoading ? (
+                    <div className="mt-4 flex items-center gap-3 text-sm text-base-content/60">
+                      <span className="loading loading-spinner loading-sm" aria-hidden="true" />
+                      Generating insight...
+                    </div>
+                  ) : insightError ? (
+                    <p className="mt-4 rounded-lg border border-error/30 bg-error/10 p-3 text-sm text-error-content">{insightError}</p>
+                  ) : insight ? (
+                    <div className="mt-4 rounded-lg border border-base-300 bg-base-100 p-4">
+                      <p className="m-0 text-[0.95rem] leading-7 text-base-content/85">{insight.summary}</p>
+                      {insight.low_data && <p className="mt-3 mb-0 text-xs text-base-content/50">Limited data is available for this error type in the selected window.</p>}
+                    </div>
+                  ) : (
+                    <p className="mt-4 text-sm text-base-content/60">Select an error type to generate an instructor insight.</p>
+                  )}
                 </div>
               </div>
             </>
           ) : (
             <>
+              {/* Overview: filters, stats and error type list */}
               <div className="mb-[22px] grid gap-4 min-[981px]:flex min-[981px]:items-start min-[981px]:justify-between min-[981px]:gap-5">
                 <div className="flex-1">
                 <h1 className="text-[clamp(2rem,2.4vw,3rem)] font-bold leading-tight tracking-tight">
                   {course ? `${course} cohort error overview` : 'All Cohort error overview'}
                 </h1>
                 </div>
-
                 <div className="flex flex-wrap items-end gap-3.5">
                   <div className="flex min-w-[140px] flex-col gap-1.5">
                     <label className="text-xs text-base-content/70">Class</label>
-                    <select className="select select-bordered select-sm w-full bg-base-100 text-base-content" value={course} onChange={(event) => setCourse(event.target.value)}>
+                    <select className="select select-bordered h-12 w-full bg-base-100 text-base-content" value={course} onChange={(event) => setCourse(event.target.value)}>
                       <option value="">All classes</option>
                       {courseCodes.map((courseCode) => <option key={courseCode} value={courseCode}>{courseCode}</option>)}
                     </select>
                   </div>
-
                   <div className="flex min-w-[140px] flex-col gap-1.5">
                     <label className="text-xs text-base-content/70">Date range</label>
-                    <select className="select select-bordered select-sm w-full bg-base-100 text-base-content" value={dateRange} onChange={(event) => setDateRange(event.target.value as AnalyticsDateRange)}>
+                    <select className="select select-bordered h-12 w-full bg-base-100 text-base-content" value={dateRange} onChange={(event) => setDateRange(event.target.value as AnalyticsDateRange)}>
                       <option value="today">Today</option>
                       <option value="last_7_days">Last 7 days</option>
                       <option value="last_month">Last month</option>
@@ -320,7 +401,6 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                   </div>
                 </div>
               </div>
-
               <div className="mb-5 grid gap-[18px] min-[981px]:grid-cols-3">
                 {overviewStats.map((stat) => (
                   <div key={stat.label} className="flex min-h-[110px] flex-col justify-center rounded-xl border border-base-300 bg-base-200 px-5 py-[18px]">
@@ -329,7 +409,6 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                   </div>
                 ))}
               </div>
-
               <div className="grid gap-5 lg:grid-cols-[3fr_2fr]">
               <div className="flex h-[calc(100vh-420px)] min-h-[400px] flex-col rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
                 <div>
@@ -337,7 +416,6 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                     <div className="mb-1.5 text-[1.05rem] font-semibold">Most common error types</div>
                   </div>
                 </div>
-
                 <div className="mt-4 h-full overflow-y-auto space-y-1.5 pr-2">
                   {concepts.length === 0 ? <p className="py-2.5 text-sm text-base-content/60">No records found</p> : concepts.map((concept) => (
                     <button
@@ -362,7 +440,6 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                   ))}
                 </div>
               </div>
-
               <div>
               <div className="flex h-[calc(100vh-420px)] min-h-[400px] flex-col rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
                 <div className="mb-1.5 text-[1.05rem] font-semibold">

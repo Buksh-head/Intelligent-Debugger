@@ -175,8 +175,22 @@ _SNIPPET_PATTERNS: list[tuple[str, str]] = [
 ]
 
 def detect_concept(error_type: str, code_snippet: str = "") -> str | None:
-    """Best-effort concept match. Returns None when nothing fits well —
-    the student is then guided normally, with no resource injected."""
+    """
+    Best-effort concept match. Returns None when nothing fits well
+    the student is guided normally, with no resource injected.
+    
+    Parameters
+    ----------
+    error_type: str
+        The error type classification received from the frontend payload
+    code_snippet: str
+        The code typed or pasted in by the student into the frontend code editor
+
+    Returns
+    -------
+    str | None: The concept the error_type maps to or None when none of the pre-defined
+        concepts match the error_type
+    """
     concept = ERROR_TYPE_CONCEPTS.get(error_type)
  
     # A self-calling function is a strong recursion signal regardless of
@@ -192,6 +206,18 @@ def detect_concept(error_type: str, code_snippet: str = "") -> str | None:
  
  
 def get_resource(concept: str | None) -> Resource | None:
+    """
+    Returns the resource matching the concept provided.
+
+    Parameters
+    ----------
+    concept: str | None
+        The concept for which a resource is required
+
+    Returns
+    -------
+    Resource | None: The resource object matching the given concept
+    """
     if not concept:
         return None
     resources = CONCEPT_RESOURCES.get(concept)
@@ -203,11 +229,21 @@ def get_resource(concept: str | None) -> Resource | None:
  
  
 def check_links(timeout: float = 5.0) -> list[tuple[str, int | str]]:
-    """Utility for CI/maintenance: HEAD every curated URL and report any
-    that aren't 200. Run this on a schedule so dead links get caught by you
-    rather than by a stuck student."""
+    """
+    Utility for CI/maintenance: HEAD every curated URL and report any
+    that aren't 200. Run this on a schedule so dead links get caught by the backend
+    rather than by a stuck user.
+
+    Parameters
+    -----------
+    timeout: float
+        The timeout for blocking operations when querying a URL
+
+    Returns
+    -------
+    list[tuple[str, int | str]]: The list of URLs that do not work from the pre-defined resources.
+    """
     import urllib.request
-    import urllib.error
  
     results = []
     for resources in CONCEPT_RESOURCES.values():

@@ -17,14 +17,21 @@ MAX_VAGUE_ATTEMPTS = 2
 
 
 class Stage(IntEnum):
+    """
+    Current Stage the student is on
+    """
     NOTICE = 1
     UNDERSTAND = 2
     LOCATE = 3
     CONCEPTUAL_FIX = 4
-    REVEAL = 5
+    REDIRECT = 5
 
 
 class ClassificationResult(BaseModel):
+    """
+    The classification of the student's response by the LLM
+    Contains the classified intent and the student's raw response
+    """
     intent: str
     raw_response: str
 
@@ -40,6 +47,7 @@ class StageDecision(NamedTuple):
     clear_gate: bool
 
 
+# The type of intention classifications that the model can classify the student's response into
 INTENT = Literal[
     "genuinely_completed",
     "vague_affirmation",
@@ -50,6 +58,7 @@ INTENT = Literal[
     "skipped_resource",
 ]
 
+# System prompt for the classification of every student response
 _CLASSIFIER_SYSTEM_PROMPT = """You are classifying a student's reply during a guided debugging exercise.
 Respond with ONLY one label, nothing else, no punctuation, no explanation."""
 
@@ -70,6 +79,21 @@ def _get_client() -> OpenAI:
     return _client
 
 def _gate_prompt(student_message: str, check_prompt: str) -> str:
+    """
+    Gives the prompt for gating the student at a stage when a resource has been supplied.
+
+    Parameters
+    ----------
+    student_message: str
+        The response provided by the student
+    
+    check_prompt: str
+        The question to ask the student to check if they understand the concept in the resource provided
+
+    Returns
+    --------
+    str: The prompt
+    """
     return f"""The student was asked to read a linked explainer and then answer this question: "{check_prompt}"
 
             Classify their reply into exactly one of these labels:
@@ -84,14 +108,39 @@ def _gate_prompt(student_message: str, check_prompt: str) -> str:
 
 
 def _stage_prompt(student_message: str, stage_task: str) -> str:
-    return f"""The student was asked to do the following specific task: "{stage_task}"
+    """
+    Gives the prompt for classifying the student's response at every stage.
 
-            Classify their reply into exactly one of these labels:
-            - genuinely_completed: student describes a specific observation, result, or action showing they actually did THIS task (names a line, a value, what they found, what they tried)
-            - vague_affirmation: student says something like "ok", "got it", "done", "yes" with NO concrete detail proving they did the task
-            - asking_analogy: student is confused and wants a simpler explanation or analogy
-            - asking_question: student is asking a clarifying question, not confirming completion
-            - off_topic: unrelated to the debugging task
+    Parameters
+    ----------
+    student_message: str
+        The response provided by the student
+    
+    stage_task: str
+        The task that the student was asked to complete immediately before their response
+
+    Returns
+    --------
+    str: The prompt
+    """
+    return f"""The student was asked: "{stage_task}"
+
+            FIRST decide what kind of answer that task calls for:
+            - If it asks a yes/no or either/or question, then a bare "yes" or "no" IS a complete answer.
+            - If it asks them to go look at something and report what they found, then a reply with no specifics is incomplete.
+
+            Then classify their reply into exactly one of these labels:
+            - genuinely_completed: the reply actually answers what was asked. This INCLUDES a bare "yes"/"no" when a yes/no question was asked, and INCLUDES short factual statements about the code ("the name does not exist", "line 3", "it's empty", "nothing assigns it").
+            - vague_affirmation: the student signals completion WITHOUT answering - "ok", "done", "got it", "I looked", "makes sense": when the task asked them to report something specific.
+            - asking_analogy: student is confused and wants a simpler explanation or analogy.
+            - asking_question: student is asking a clarifying question, not answering.
+            - off_topic: unrelated to the debugging task.
+
+            Examples:
+            Task: "Did you create that variable earlier?" / Reply: "no" -> genuinely_completed
+            Task: "What does a NameError mean?" / Reply: "the name does not exist" -> genuinely_completed
+            Task: "Look at line 3 and tell me what you see." / Reply: "ok done" -> vague_affirmation
+            Task: "What number are you asking for there?" / Reply: "I checked it" -> vague_affirmation
 
             Student message: "{student_message}"
 
@@ -121,6 +170,7 @@ def classify_student_message(
         else _stage_prompt(student_message, stage_task)
     )
 
+    # API call to the LLM model to classify a student's message
     try:
         response = _get_client().chat.completions.create(
             model=model,
@@ -142,7 +192,7 @@ def classify_student_message(
 
     if raw not in VALID_INTENTS:
         raw = "skipped_resource" if gated else "vague_affirmation"
-    # A gate intent returned outside gate mode (or vice versa) is nonsense;
+    # A gate intent returned outside gate mode (or vice versa) is hallucination;
     # coerce rather than let it flow into resolve_next_stage.
     elif gated and raw not in GATE_INTENTS | {"asking_question", "off_topic"}:
         raw = "skipped_resource"
@@ -173,7 +223,7 @@ def resolve_next_stage(
 
     Kept separate from any DB/request code so it's trivially unit-testable.
     """
-    # --- Resource gate open: the stage cannot advance at all ------------
+    # Resource introduced: the stage cannot advance at all until student answers the question
     if has_pending_resource:
         if intent == "reviewed_resource":
             # Gate opens, stage does NOT advance: reading about a concept
@@ -189,15 +239,15 @@ def resolve_next_stage(
         # asking_question / off_topic: hold, counters untouched.
         return StageDecision(current_stage, vague_attempts_this_stage, False, False, False)
 
-    # --- Normal staged flow ---------------------------------------------
+    # The stage increment based off classification
     if intent == "genuinely_completed":
-        if current_stage < Stage.REVEAL:
+        if current_stage < Stage.REDIRECT:
             return StageDecision(current_stage + 1, 0, True, False, False)
         return StageDecision(current_stage, 0, False, False, False)
 
     if intent == "vague_affirmation":
         next_vague = vague_attempts_this_stage + 1
-        if next_vague >= MAX_VAGUE_ATTEMPTS and current_stage < Stage.REVEAL:
+        if next_vague >= MAX_VAGUE_ATTEMPTS and current_stage < Stage.REDIRECT:
             return StageDecision(current_stage + 1, 0, True, True, False)
         return StageDecision(current_stage, next_vague, False, False, False)
 

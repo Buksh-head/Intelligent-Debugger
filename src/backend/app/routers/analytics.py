@@ -49,8 +49,8 @@ def get_cohort_analytics(
     else:
         since = now - timedelta(days=7)
 
-    params = {"since": since, "course": course}
-    course_filter = " AND s.course = :course" if course else ""
+    params = {"since": since.date(), "course": course}
+    course_filter = " AND c.course = :course" if course else ""
 
     engine = get_engine()
 
@@ -63,15 +63,14 @@ def get_cohort_analytics(
                     f"""
                     SELECT
                         (
-                            SELECT COUNT(*)
-                            FROM submissions s
-                            WHERE s.created_at >= :since{course_filter}
+                            SELECT COALESCE(SUM(c.submission_count), 0)::bigint
+                            FROM submission_counts c
+                            WHERE c.day >= :since{course_filter}
                         ) AS session_count,
                         (
-                            SELECT COUNT(*)
-                            FROM error_logs el
-                            JOIN submissions s ON s.id = el.submission_id
-                            WHERE el.created_at >= :since{course_filter}
+                            SELECT COALESCE(SUM(c.error_count), 0)::bigint
+                            FROM error_counts c
+                            WHERE c.day >= :since{course_filter}
                         ) AS error_count
                     """
                 ),
@@ -85,13 +84,12 @@ def get_cohort_analytics(
                     """
                     SELECT
                         COALESCE(
-                            NULLIF(TRIM(el.error_type), ''),
+                            NULLIF(TRIM(c.error_type), ''),
                             'Unknown error'
                         ) AS name,
-                        COUNT(*) AS count
-                    FROM error_logs el
-                    JOIN submissions s ON s.id = el.submission_id
-                    WHERE el.created_at >= :since{course_filter}
+                        SUM(c.error_count)::bigint AS count
+                    FROM error_counts c
+                    WHERE c.day >= :since{course_filter}
                     GROUP BY 1
                     ORDER BY count DESC, name
                     """.format(course_filter=course_filter)
@@ -105,14 +103,10 @@ def get_cohort_analytics(
                 text(
                     """
                     SELECT
-                        COALESCE(
-                            NULLIF(TRIM(el.message), ''),
-                            el.error_type
-                        ) AS label,
-                        COUNT(*) AS count
-                    FROM error_logs el
-                    JOIN submissions s ON s.id = el.submission_id
-                    WHERE el.created_at >= :since{course_filter}
+                        COALESCE(c.message, c.error_type) AS label,
+                        SUM(c.error_count)::bigint AS count
+                    FROM error_counts c
+                    WHERE c.day >= :since{course_filter}
                     GROUP BY 1
                     ORDER BY count DESC, label
                     LIMIT 10
@@ -128,17 +122,13 @@ def get_cohort_analytics(
                     """
                     SELECT
                         COALESCE(
-                            NULLIF(TRIM(el.error_type), ''),
+                            NULLIF(TRIM(c.error_type), ''),
                             'Unknown error'
                         ) AS concept,
-                        COALESCE(
-                            NULLIF(TRIM(el.message), ''),
-                            el.error_type
-                        ) AS label,
-                        COUNT(*) AS count
-                    FROM error_logs el
-                    JOIN submissions s ON s.id = el.submission_id
-                    WHERE el.created_at >= :since{course_filter}
+                        COALESCE(c.message, c.error_type) AS label,
+                        SUM(c.error_count)::bigint AS count
+                    FROM error_counts c
+                    WHERE c.day >= :since{course_filter}
                     GROUP BY 1, 2
                     ORDER BY 1, count DESC, 2
                     """.format(course_filter=course_filter)
@@ -153,18 +143,14 @@ def get_cohort_analytics(
                     """
                     SELECT
                         COALESCE(
-                            NULLIF(TRIM(el.error_type), ''),
+                            NULLIF(TRIM(c.error_type), ''),
                             'Unknown error'
                         ) AS concept,
-                        TO_CHAR(
-                            DATE_TRUNC('day', el.created_at),
-                            'Mon DD'
-                        ) AS label,
-                        COUNT(*) AS count,
-                        DATE_TRUNC('day', el.created_at) AS day
-                    FROM error_logs el
-                    JOIN submissions s ON s.id = el.submission_id
-                    WHERE el.created_at >= :since{course_filter}
+                        TO_CHAR(c.day, 'Mon DD') AS label,
+                        SUM(c.error_count)::bigint AS count,
+                        c.day AS day
+                    FROM error_counts c
+                    WHERE c.day >= :since{course_filter}
                     GROUP BY 1, 2, 4
                     ORDER BY 1, 4
                     """.format(course_filter=course_filter)
@@ -179,25 +165,20 @@ def get_cohort_analytics(
                     """
                     SELECT
                         COALESCE(
-                            NULLIF(TRIM(el.error_type), ''),
+                            NULLIF(TRIM(c.error_type), ''),
                             'Unknown error'
                         ) AS concept,
-                        COUNT(*) FILTER (
-                            WHERE el.resolved_at IS NOT NULL
-                        ) AS resolved,
-                        COUNT(*) FILTER (
-                            WHERE
-                                el.resolved_at IS NULL
-                                AND el.hint_stage_reached > 1
-                        ) AS attempted,
-                        COUNT(*) FILTER (
-                            WHERE
-                                el.resolved_at IS NULL
-                                AND el.hint_stage_reached = 1
-                        ) AS untried
-                    FROM error_logs el
-                    JOIN submissions s ON s.id = el.submission_id
-                    WHERE el.created_at >= :since{course_filter}
+                        COALESCE(SUM(c.error_count) FILTER (
+                            WHERE c.outcome = 'resolved'
+                        ), 0)::bigint AS resolved,
+                        COALESCE(SUM(c.error_count) FILTER (
+                            WHERE c.outcome = 'attempted'
+                        ), 0)::bigint AS attempted,
+                        COALESCE(SUM(c.error_count) FILTER (
+                            WHERE c.outcome = 'untried'
+                        ), 0)::bigint AS untried
+                    FROM error_counts c
+                    WHERE c.day >= :since{course_filter}
                     GROUP BY 1
                     """.format(course_filter=course_filter)
                 ),

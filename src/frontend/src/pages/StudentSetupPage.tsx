@@ -36,7 +36,7 @@ export default function StudentSetupPage() {
           <label className="flex flex-col gap-1">
             <span className="text-sm font-medium">Course</span>
             <select
-              className="select select-bordered w-full"
+              className="select select-bordered h-12 w-full bg-base-100 text-base-content"
               value={course}
               onChange={(event) => {
                 const selectedCourse = event.target.value;
@@ -52,7 +52,7 @@ export default function StudentSetupPage() {
 
           <label className="flex flex-col gap-1">
             <span className="text-sm font-medium">Coding language</span>
-            <select className="select select-bordered w-full" value={language} onChange={(event) => setLanguage(event.target.value)} required>
+            <select className="select select-bordered h-12 w-full bg-base-100 text-base-content" value={language} onChange={(event) => setLanguage(event.target.value)} required>
               <option value="" disabled>Select your coding language</option>
               {languages.map((option) => <option key={option} value={option}>{option}</option>)}
             </select>
