@@ -301,6 +301,11 @@ function App() {
       setApiError('Please write some code before debugging.');
       return;
     }
+    if (!studentSession?.course) {
+      setApiError('Please select your course before debugging.');
+      navigate('/student/setup');
+      return;
+    }
     const requestSessionId = sessionId;
     setIsLoading(true);
     setApiError(null);

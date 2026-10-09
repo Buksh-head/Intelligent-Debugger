@@ -9,8 +9,9 @@ Table definitions is in app.db_models.
 """
 import hashlib
 import os
+from datetime import datetime, timezone
 
-from sqlmodel import Session, create_engine
+from sqlmodel import Session, create_engine, select
 
 from app.db_models import ErrorLog, Submission
 
@@ -70,6 +71,20 @@ def save_execution(
     code_hash = "sha256:" + hashlib.sha256(code.encode()).hexdigest()
 
     with Session(get_engine()) as session:
+        if error is None:
+            unresolved_errors = session.exec(
+                select(ErrorLog)
+                .join(Submission, ErrorLog.submission_id == Submission.id)
+                .where(
+                    Submission.session_id == session_id,
+                    ErrorLog.resolved_at.is_(None),
+                )
+            ).all()
+            resolved_at = datetime.now(timezone.utc)
+            for unresolved_error in unresolved_errors:
+                unresolved_error.resolved_at = resolved_at
+                session.add(unresolved_error)
+
         submission = Submission(
             session_id=session_id,
             code=code,

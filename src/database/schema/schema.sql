@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS hint_events (
 
 CREATE INDEX IF NOT EXISTS idx_error_logs_error_type ON error_logs (error_type);
 CREATE INDEX IF NOT EXISTS idx_error_logs_created_at ON error_logs (created_at);
+CREATE INDEX IF NOT EXISTS idx_error_logs_created_type_submission
+    ON error_logs (created_at, error_type, submission_id);
 CREATE INDEX IF NOT EXISTS idx_hint_events_error_log_id ON hint_events (error_log_id);
 CREATE INDEX IF NOT EXISTS idx_error_logs_submission_id ON error_logs (submission_id);  -- speeds up cascade deletes (#23)
 CREATE INDEX IF NOT EXISTS idx_submissions_course ON submissions (course);
