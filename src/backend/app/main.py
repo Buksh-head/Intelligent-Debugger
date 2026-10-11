@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import analysis, execution, generation, instructor, analytics, insights, data_deletion
 
-app = FastAPI(title="Intelligent Debugging Assistant API")
+app = FastAPI(title="Error Guide API")
 
 app.add_middleware(
     CORSMiddleware,

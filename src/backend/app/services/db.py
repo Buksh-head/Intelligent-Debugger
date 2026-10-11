@@ -71,6 +71,9 @@ def save_execution(
     code_hash = "sha256:" + hashlib.sha256(code.encode()).hexdigest()
 
     with Session(get_engine()) as session:
+        # A successful retry resolves earlier errors from the same anonymous
+        # session, allowing the dashboard to report progress without storing
+        # or exposing the student's submitted code.
         if error is None:
             unresolved_errors = session.exec(
                 select(ErrorLog)
@@ -97,6 +100,8 @@ def save_execution(
 
         error_log_id = None
         if error is not None:
+            # Failed runs keep a compact error record linked to their
+            # submission so the analytics queries can aggregate it later.
             error_log = ErrorLog(
                 submission_id=submission.id,
                 error_type=error["error_type"],

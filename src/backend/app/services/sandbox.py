@@ -28,6 +28,8 @@ def run_in_sandbox(source: str, language: str = "Python") -> dict:
     error (a beginner-relevant {error_type, message, line_number} summary,
     or None if the code ran cleanly).
     """
+    # Map the student's language choice to a configured Piston runtime.
+    # Unknown values fall back to Python so execution remains predictable.
     piston_language = language.lower()
     if piston_language not in RUNTIME_VERSIONS:
         piston_language = "python"

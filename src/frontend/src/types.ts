@@ -1,6 +1,8 @@
 // Types mirroring the backend's API schemas (src/backend/app/models.py).
 // Keep these in sync if that file changes.
 
+// Execution and hint types describe the feedback exchanged while a student
+// runs code and works through the debugging assistant.
 export interface ExecutionError {
   error_type: string;
   message: string;

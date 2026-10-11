@@ -1,19 +1,182 @@
 @import "tailwindcss";
+
 @plugin "daisyui" {
   themes: light --default, dark --prefersdark, synthwave, luxury, forest;
 }
 
-/* Monaco decoration for a failing line returned by /api/execute. */
+/* Monaco colour for a failing line returned by /api/execute. */
 .error-line-highlight {
   background-color: rgba(239, 68, 68, 0.25);
 }
 
-[data-theme="light"] .student-debugger {
-  background: gainsboro;
-}
-
+[data-theme="light"] .student-panel,
 [data-theme="light"] .student-card {
   background: white;
-  border: 1px solid lightgray;
-  box-shadow: 0 2px 8px lightgray;
+  border: 2px solid gainsboro;
+}
+
+[data-theme="dark"] {
+  --student-dark-page: rgb(27 31 38);
+  --student-dark-panel: rgb(34 39 47);
+  --student-dark-header: rgb(32 36 43);
+  --student-dark-workspace: rgb(30 30 30);
+  --student-dark-border: rgb(58 67 80);
+  --student-dark-text: rgb(215 220 229);
+}
+
+[data-theme="dark"] .student-panel,
+[data-theme="dark"] .student-card {
+  background: var(--student-dark-panel);
+  border: 1px solid var(--student-dark-border);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 22%);
+}
+
+[data-theme="dark"] .student-debugger {
+  background: var(--student-dark-page);
+}
+
+[data-theme="dark"] .student-panel-header {
+  background: var(--student-dark-header);
+  border-color: var(--student-dark-border);
+  color: var(--student-dark-text);
+}
+
+[data-theme="dark"] .student-editor-surface,
+[data-theme="dark"] .student-output-surface,
+[data-theme="dark"] .student-chat-surface {
+  background: var(--student-dark-workspace);
+  border-color: var(--student-dark-border);
+}
+
+[data-theme="dark"] .student-chat-composer {
+  background: var(--student-dark-header);
+  border-top: 1px solid var(--student-dark-border);
+}
+
+@media (hover: hover) {
+  .btn:not(:disabled):hover {
+    transform: scale(1.02);
+  }
+
+  .btn:not(:disabled):active {
+    transform: scale(0.98);
+  }
+}
+
+/* Intro tour popups (driver.js), matched to the current theme.
+   Scoped to .student-tour, the class the tour sets on its popups.
+   Colours come from daisyUI, with light and dark using the same
+   panel colours as the Student View above. */
+.driver-popover.student-tour {
+  --tour-bg: var(--color-base-100);
+  --tour-text: var(--color-base-content);
+  --tour-border: var(--color-base-300);
+  --tour-button-bg: var(--color-base-200);
+
+  background-color: var(--tour-bg);
+  color: var(--tour-text);
+  border: 1px solid var(--tour-border);
+  border-radius: var(--radius-box);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.35);
+  font-family: inherit;
+  max-width: 340px;
+}
+
+[data-theme="light"] .driver-popover.student-tour {
+  --tour-bg: white;
+  --tour-border: gainsboro;
+}
+
+[data-theme="dark"] .driver-popover.student-tour {
+  --tour-bg: var(--student-dark-panel);
+  --tour-text: var(--student-dark-text);
+  --tour-border: var(--student-dark-border);
+  --tour-button-bg: var(--student-dark-header);
+}
+
+.driver-popover.student-tour .driver-popover-title {
+  font-family: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--tour-text);
+}
+
+.driver-popover.student-tour .driver-popover-description {
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: color-mix(in oklab, var(--tour-text) 80%, transparent);
+}
+
+.driver-popover.student-tour .driver-popover-progress-text,
+.driver-popover.student-tour .driver-popover-close-btn {
+  color: color-mix(in oklab, var(--tour-text) 60%, transparent);
+}
+
+.driver-popover.student-tour .driver-popover-close-btn:hover,
+.driver-popover.student-tour .driver-popover-close-btn:focus {
+  color: var(--tour-text);
+}
+
+/* Back button: quiet. Next and Done: primary colour. */
+.driver-popover.student-tour .driver-popover-footer button {
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-shadow: none;
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--radius-field);
+  background-color: var(--tour-button-bg);
+  color: var(--tour-text);
+  border: 1px solid var(--tour-border);
+}
+
+.driver-popover.student-tour .driver-popover-footer .driver-popover-next-btn {
+  background-color: var(--color-primary);
+  color: var(--color-primary-content);
+  border-color: var(--color-primary);
+}
+
+.driver-popover.student-tour .driver-popover-footer button:hover {
+  filter: brightness(1.1);
+}
+
+.driver-popover.student-tour .driver-popover-footer button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.driver-popover.student-tour .driver-popover-btn-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* The small arrow pointing at the highlighted element. Only the side
+   facing the element is coloured; the other three stay see-through. */
+.driver-popover.student-tour .driver-popover-arrow {
+  border-color: var(--tour-bg);
+}
+
+.driver-popover.student-tour .driver-popover-arrow-side-left {
+  border-top-color: transparent;
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+}
+
+.driver-popover.student-tour .driver-popover-arrow-side-right {
+  border-top-color: transparent;
+  border-left-color: transparent;
+  border-bottom-color: transparent;
+}
+
+.driver-popover.student-tour .driver-popover-arrow-side-top {
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  border-left-color: transparent;
+}
+
+.driver-popover.student-tour .driver-popover-arrow-side-bottom {
+  border-top-color: transparent;
+  border-right-color: transparent;
+  border-left-color: transparent;
 }

@@ -9,6 +9,7 @@ import { useAuth } from './useAuth';
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
   const { session, loading } = useAuth();
 
+  // Authentication is checked before rendering protected instructor content.
   // Wait for the login check, otherwise logged-in instructors get
   // bounced on page refresh.
   if (loading) {

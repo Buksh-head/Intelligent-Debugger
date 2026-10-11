@@ -12,18 +12,19 @@ import { useStudentSession } from '../session/useStudentSession';
 type Role = 'student' | 'instructor';
 type InstructorMode = 'login' | 'register';
 type PastDeleteStatus = 'idle' | 'deleting' | 'done';
+const appLogo = '/error-guide-logo.png';
 
 // Default language for each course. The student can still change it.
 const courseLanguages: Record<string, string> = {
   CSSE1001: 'Python',
-  CSSE2002: 'Java',
   ENGG1001: 'Python',
-  DECO1800: 'JavaScript',
+  SCIE1000: 'Python',
 };
 
 // Session IDs are UUIDs from crypto.randomUUID(). Checking the shape here
 // gives the student a clear message for a mistyped ID instead of a server error.
 const sessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function WelcomePage() {
   const navigate = useNavigate();
@@ -48,10 +49,12 @@ export default function WelcomePage() {
   const [pastDeleteStatus, setPastDeleteStatus] = useState<PastDeleteStatus>('idle');
   const [pastDeleteError, setPastDeleteError] = useState('');
 
+  // The same form supports anonymous student sessions and instructor
+  // authentication, so the selected role determines which fields are used.
   // Text for the left panel and form heading, based on the selected tab.
   const roleContent = role === 'student'
     ? {
-      eyebrow: 'Intelligent Debugging Assistant',
+      eyebrow: 'Error Guide',
       title: 'Learn to debug with confidence.',
       description: 'Work through your own code with staged hints, clear explanations, and small experiments that build lasting debugging skills.',
       features: ['Progressive hints', 'Better feedback'],
@@ -59,7 +62,7 @@ export default function WelcomePage() {
       prompt: 'Choose your course and programming language.',
     }
     : {
-      eyebrow: 'Intelligent Debugging Assistant',
+      eyebrow: 'Error Guide',
       title: 'See where students get stuck.',
       description: 'Review anonymous cohort patterns, recurring errors, and common misconceptions to support more targeted teaching.',
       features: ['Cohort insights', 'Targeted teaching insights'],
@@ -72,8 +75,17 @@ export default function WelcomePage() {
     setError('');
     setMessage('');
 
+    if (role === 'instructor' && !emailPattern.test(userId.trim())) {
+      setError('Please enter a valid instructor email address.');
+      return;
+    }
+
     // Instructor sign in
     if (role === 'instructor' && instructorMode === 'login') {
+      if (!password) {
+        setError('Please enter your password.');
+        return;
+      }
       setIsSubmitting(true);
       try {
         const result = await signIn(userId.trim(), password);
@@ -162,11 +174,17 @@ export default function WelcomePage() {
   };
 
   return (
+    // The page is one responsive card: the left side explains the app and
+    // the right side contains the student or instructor entry form.
     <div className="min-h-screen bg-base-200 px-6 py-10 text-base-content">
       <main className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-center justify-center">
         <section className={`grid w-full overflow-hidden rounded-box bg-base-100 shadow-xl lg:grid-cols-[1.05fr_0.95fr] ${role === 'instructor' && instructorMode === 'register' ? 'lg:h-[630px]' : 'lg:h-[540px]'}`}>
+          {/* This panel changes its heading and feature text when the role changes. */}
           <div className={`flex flex-col bg-primary px-8 py-12 text-primary-content sm:px-12 ${role === 'instructor' && instructorMode === 'register' ? 'min-h-[630px]' : 'min-h-[540px]'}`}>
-            <p className="mb-4 text-sm font-medium uppercase tracking-[0.2em] text-primary-content/65">{roleContent.eyebrow}</p>
+            <div className="mb-6 flex items-center gap-4">
+              <img src={appLogo} alt="Error Guide logo" className="h-24 w-24 shrink-0 rounded-box object-contain sm:h-28 sm:w-28" />
+              <p className="text-xl font-semibold tracking-wide text-primary-content sm:text-2xl">{roleContent.eyebrow}</p>
+            </div>
             <h1 className="max-w-md text-4xl font-bold leading-tight sm:text-5xl">{roleContent.title}</h1>
             <p className="mt-5 max-w-md text-base leading-7 text-primary-content/75">{roleContent.description}</p>
             <div className="mt-auto grid max-w-sm grid-cols-2 gap-8 pb-1 text-sm text-primary-content/75">
@@ -176,11 +194,13 @@ export default function WelcomePage() {
           </div>
 
           <div className="relative flex flex-col px-8 py-10 sm:px-12">
+            {/* The right panel contains the current role's form controls. */}
             <div className="mb-8">
               <h2 className="text-2xl font-bold">{roleContent.welcome}</h2>
               {roleContent.prompt && <p className="mt-2 text-sm text-base-content/60">{roleContent.prompt}</p>}
             </div>
 
+            {/* Clicking a tab updates role, which switches the form below. */}
             <div className="mb-7 grid grid-cols-2 rounded-btn bg-base-200 p-1" role="tablist" aria-label="Account type">
               {(['student', 'instructor'] as Role[]).map((option) => (
                 <button
@@ -201,8 +221,10 @@ export default function WelcomePage() {
               ))}
             </div>
 
+            {/* handleSubmit decides whether to log in, register, or start a student session. */}
             <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col gap-5">
               {role === 'instructor' && (
+                // Instructors need an email before they can sign in or register.
                 <label className="form-control w-full gap-2">
                   <span className="label-text block pb-2 text-sm font-medium">Instructor email</span>
                   <input
@@ -210,15 +232,22 @@ export default function WelcomePage() {
                     className="input input-bordered h-12 w-full bg-base-100 text-base-content border-base-300"
                     placeholder="tutor@university.edu"
                     autoComplete="username"
+                    inputMode="email"
+                    maxLength={254}
                     required
                     value={userId}
-                    onChange={(event) => setUserId(event.target.value)}
+                    onInvalid={(event) => event.currentTarget.setCustomValidity('Please enter a valid instructor email address.')}
+                    onChange={(event) => {
+                      event.currentTarget.setCustomValidity('');
+                      setUserId(event.target.value);
+                    }}
                   />
                 </label>
               )}
 
               {role === 'student' ? (
                 <>
+                  {/* Students choose a course; changing it also selects that course's default language. */}
                   <label className="form-control w-full gap-0">
                     <span className="label-text block pb-2 text-sm font-medium">What course do you need help with?</span>
                     <select
@@ -232,12 +261,14 @@ export default function WelcomePage() {
                     >
                       <option value="" disabled>Select a course</option>
                       <option value="CSSE1001">CSSE1001 Introduction to Software Engineering</option>
-                      <option value="CSSE2002">CSSE2002 Programming in the Large</option>
+                      <option value="CSSE2002" disabled>CSSE2002 Programming in the Large (Coming soon)</option>
                       <option value="ENGG1001">ENGG1001 Introduction to Engineering</option>
-                      <option value="DECO1800">DECO1800 Design Computing</option>
+                      <option value="DECO1800" disabled>DECO1800 Design Computing (Coming soon)</option>
+                      <option value="SCIE1000">SCIE1000 Introduction to Science</option>
                     </select>
                   </label>
 
+                  {/* The language remains editable, although unavailable languages are marked coming soon. */}
                   <label className="form-control w-full gap-0">
                     <span className="label-text block pb-2 text-sm font-medium">Programming language</span>
                     <select
@@ -246,19 +277,21 @@ export default function WelcomePage() {
                       onChange={(event) => setLanguage(event.target.value)}
                     >
                       <option value="Python">Python</option>
-                      <option value="Java">Java</option>
-                      <option value="JavaScript">JavaScript</option>
+                      <option value="Java" disabled>Java (Coming soon)</option>
+                      <option value="JavaScript" disabled>JavaScript (Coming soon)</option>
                     </select>
                   </label>
                 </>
               ) : (
                 <>
+                  {/* Instructor authentication uses a password for both login and registration. */}
                   <label className="form-control w-full gap-2">
                     <span className="label-text block pb-2 text-sm font-medium">{instructorMode === 'register' ? 'Create password' : 'Password'}</span>
                     <input
                       type="password"
                       className="input input-bordered h-12 w-full bg-base-100 text-base-content border-base-300"
                       autoComplete={instructorMode === 'login' ? 'current-password' : 'new-password'}
+                      placeholder={instructorMode === 'register' ? 'At least 6 characters' : undefined}
                       minLength={6}
                       required
                       value={password}
@@ -266,6 +299,7 @@ export default function WelcomePage() {
                     />
                   </label>
                   {instructorMode === 'register' && (
+                    // Registration adds a second password field to catch typing mistakes.
                     <label className="form-control w-full gap-2">
                       <span className="label-text block pb-2 text-sm font-medium">Confirm password</span>
                       <input
@@ -282,17 +316,20 @@ export default function WelcomePage() {
                 </>
               )}
 
+              {/* Only one message is shown at a time: errors take priority over success messages. */}
               {(error || message) && (
                 <p className={`relative -top-2 text-sm ${error ? 'text-error' : 'text-success'}`}>
                   {error || message}
                 </p>
               )}
+              {/* The label changes while a request is being processed. */}
               <div className="mt-auto h-12 w-full lg:absolute lg:bottom-[72px] lg:left-12 lg:right-12 lg:w-auto">
                 <button type="submit" className="btn btn-primary h-12 w-full">
                   {isSubmitting ? (instructorMode === 'login' ? 'Signing in...' : 'Creating account...') : role === 'student' ? 'Continue as student' : instructorMode === 'login' ? 'Continue as instructor' : 'Create instructor account'}
                 </button>
               </div>
             </form>
+            {/* Instructors can switch between login and registration; students can open data deletion. */}
             {role === 'instructor' ? (
               <p className="mt-4 min-h-5 text-center text-sm">
                 {instructorMode === 'login' ? 'Need an account?' : 'Already have an account?'}{' '}
@@ -311,7 +348,7 @@ export default function WelcomePage() {
         </section>
       </main>
       
-      {/* Popup for deleting data from a past session */} 
+      {/* This modal is mounted only after the student chooses to delete old session data. */}
       {showPastDelete && (
         <div className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="past-delete-title">
           <div className="modal-box">
@@ -319,6 +356,7 @@ export default function WelcomePage() {
 
             {pastDeleteStatus === 'done' ? (
               <>
+                {/* A completed request replaces the input with a confirmation and Close button. */}
                 <p className="py-3 text-sm">
                   Done. If any data was stored under that session ID, it has been deleted.
                 </p>
@@ -330,6 +368,7 @@ export default function WelcomePage() {
               </>
             ) : (
               <>
+                {/* Before completion, the student enters a UUID and can submit or cancel the request. */}
                 <p className="py-3 text-sm">
                   Paste the session ID you saved. This deletes the code, errors and hints from that session. It can't be undone.
                 </p>

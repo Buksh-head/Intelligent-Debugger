@@ -1,4 +1,19 @@
-"""Privacy-preserving aggregate queries for the instructor dashboard."""
+"""Privacy-preserving aggregate queries for the instructor dashboard.
+
+The frontend calls ``GET /api/analytics/cohort`` through
+``src/frontend/src/api.ts``. This router converts the selected date range and
+course into aggregate database queries, then returns the shape consumed by
+``InstructorDashboard.tsx``:
+
+* ``analysed_sessions`` and ``detected_errors`` populate the overview cards.
+* ``concepts`` populates the selectable list of common error types.
+* ``recurring_errors`` populates the recurring raw-error list.
+* ``details`` supplies the chart, grouped errors, and outcome breakdown for a
+  selected concept.
+
+Only aggregate counts and labels are returned; submitted code and session IDs
+are not included in the response.
+"""
 
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -36,10 +51,17 @@ def get_cohort_analytics(
     ] = Query("last_7_days"),
     course: str | None = Query(None),
 ) -> AnalyticsResponse:
-    """Return aggregate counts only; student code and session IDs never leave the DB."""
+    """Build the complete dataset used by the instructor dashboard.
+
+    ``InstructorDashboard`` requests this endpoint whenever its course or
+    date-range filter changes. Selecting an error concept does not make a new
+    request; the component reads that concept's entry from ``details``.
+    """
 
     now = datetime.now(timezone.utc)
 
+    # Convert the dashboard's friendly time-range option into one UTC
+    # boundary so every aggregate query uses the same period.
     if date_range == "semester_2_2026":
         since = datetime(2026, 7, 27, tzinfo=timezone.utc)
     elif date_range == "today":
@@ -52,10 +74,15 @@ def get_cohort_analytics(
     params = {"since": since.date(), "course": course}
     course_filter = " AND c.course = :course" if course else ""
 
+    # The optional course clause is reused by each query while the values
+    # remain parameterised to avoid putting user input into SQL.
     engine = get_engine()
 
     # Each database query gets its own Session because SQLAlchemy Sessions
     # must not be shared between concurrent threads.
+
+    # Query 1: add the daily submission and error counters for the selected
+    # period. These totals become the overview session and error cards.
     def fetch_counts():
         with Session(engine) as session:
             return session.execute(
@@ -77,6 +104,8 @@ def get_cohort_analytics(
                 params,
             ).one()
 
+    # Query 2: group errors by error type, count each type, and calculate
+    # percentages later. The sorted rows become the common-concepts list.
     def fetch_concepts():
         with Session(engine) as session:
             return session.execute(
@@ -97,6 +126,8 @@ def get_cohort_analytics(
                 params,
             ).all()
 
+    # Query 3: find the ten most frequent raw error messages. This gives
+    # instructors a quick view of the repeated messages behind the concepts.
     def fetch_recurring():
         with Session(engine) as session:
             return session.execute(
@@ -115,6 +146,8 @@ def get_cohort_analytics(
                 params,
             ).all()
 
+    # Query 4: group each error type with its individual messages. These
+    # rows populate the grouped-errors section of a concept detail view.
     def fetch_details():
         with Session(engine) as session:
             return session.execute(
@@ -136,6 +169,8 @@ def get_cohort_analytics(
                 params,
             ).all()
 
+    # Query 5: group each error type by day and format the date label. The
+    # frontend uses these rows to draw the error-frequency bar chart.
     def fetch_chart():
         with Session(engine) as session:
             return session.execute(
@@ -158,6 +193,8 @@ def get_cohort_analytics(
                 params,
             ).all()
 
+    # Query 6: count resolved, attempted, and untried outcomes for each
+    # error type. These counts become the outcome percentages and bars.
     def fetch_outcomes():
         with Session(engine) as session:
             return session.execute(
@@ -202,9 +239,12 @@ def get_cohort_analytics(
         chart_rows = chart_future.result()
         outcome_rows = outcomes_future.result()
 
+    # These top-level values become the overview cards in
+    # InstructorDashboard.tsx.
     session_count = counts.session_count
     error_count = counts.error_count
 
+    # Turn database rows into the response models expected by the dashboard.
     concepts = [
         AnalyticsConcept(
             name=row.name,
@@ -237,6 +277,8 @@ def get_cohort_analytics(
     details: dict[str, AnalyticsConceptDetail] = {}
     outcome_map = {row.concept: row for row in outcome_rows}
 
+    # Combine the separate detail, chart, and outcome queries into one
+    # detail object for each error concept shown in the dashboard.
     for concept in concepts:
         outcome = outcome_map.get(concept.name)
 
@@ -282,6 +324,8 @@ def get_cohort_analytics(
             ),
         )
 
+    # The API wrapper in src/frontend/src/api.ts deserialises this response
+    # into AnalyticsResponse, which InstructorDashboard stores in `analytics`.
     return AnalyticsResponse(
         analysed_sessions=session_count,
         detected_errors=error_count,

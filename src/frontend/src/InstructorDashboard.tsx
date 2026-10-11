@@ -6,8 +6,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getCohortAnalytics } from './api'
 import type { AnalyticsConcept, AnalyticsDateRange, AnalyticsResponse } from './types'
-import pythonLogo from './assets/python.jpg'
 import { ArrowLeft, ArrowRight, ChevronDown, LogOut, Sun, Moon, User } from 'lucide-react'
+const appLogo = '/error-guide-logo.png'
 type InstructorDashboardProps = {
   onBack: () => void
 }
@@ -33,6 +33,9 @@ const themeOptions = [
 ] as const
 type Theme = (typeof themeOptions)[number]['value']
 const themeStorageKey = 'debugging-assistant.theme'
+
+// The dashboard reuses the student's theme choice so both views have a
+// consistent appearance.
 const getInitialTheme = (): Theme => {
   const savedTheme = localStorage.getItem(themeStorageKey)
   const savedOption = themeOptions.find((option) => option.value === savedTheme)
@@ -165,11 +168,12 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
   const yTicks = Array.from({ length: 5 }, (_, index) => Math.round((chartMax * index) / 4))
   return (
     <div className="min-h-screen w-full bg-base-100 p-5 text-base-content">
-      <header className="navbar mb-2">
+      {/* The header identifies the instructor view and contains account controls. */}
+      <header className="navbar">
         <div className="flex-1 flex items-center gap-3">
-          <img src={pythonLogo} alt="Python Logo" className="h-[50px]" />
+          <img src={appLogo} alt="Error Guide logo" className="h-[88px] w-[88px] shrink-0 rounded-box object-contain" />
           <div>
-            <h1 className="font-mono text-3xl font-semibold tracking-wider text-primary">INTELLIGENT PYTHON DEBUGGER</h1>
+            <h1 className="font-mono text-3xl font-semibold tracking-wider text-primary">ERROR GUIDE</h1>
             <p className="mt-1">Instructor View</p>
           </div>
         </div>
@@ -188,7 +192,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
           className="dropdown-content z-20 mt-3 w-64 rounded-xl border border-base-300 bg-base-100 p-4 shadow-xl"
         >
 
-          {/* Profile */}
+          {/* Profile summary is shown inside the account dropdown. */}
           <div className="mb-4 flex items-center gap-3 border-b border-base-300 pb-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-content">
               <User size={24} />
@@ -205,7 +209,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
           </div>
 
 
-          {/* Theme toggle */}
+          {/* The theme button switches between the saved light and dark themes. */}
           <div className="mb-3 flex items-center justify-between">
             <div>
               <div className="font-medium">
@@ -226,10 +230,10 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
           </div>
 
 
-          {/* Logout */}
+          {/* Logging out uses the parent callback to leave the protected dashboard. */}
           <button
             type="button"
-            className="btn btn-outline btn-error w-full"
+            className="btn btn-error w-full"
             onClick={onBack}
           >
             <LogOut size={16} />
@@ -240,21 +244,23 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
       </div>
       </header>
       <div className="flex min-h-0">
-        <main className="flex-1 bg-base-100 px-[18px] py-[18px] min-[981px]:px-8 min-[981px]:pb-4 min-[981px]:pt-6">
-          {/* Shows one of: error, loading, detail view or overview */}
+        <main className="flex-1 bg-base-100 px-0 py-[18px] min-[981px]:pb-4 min-[981px]:pt-0">
+          {/* The main area shows an error, loading state, selected-concept detail,
+              or the overview depending on the current data and selection. */}
           {analyticsError ? (
             <p className="rounded-xl border border-error/30 bg-error/10 p-5 text-error-content">{analyticsError}</p>
           ) : !analytics ? (
             <p className="rounded-xl border border-base-300 bg-base-200 p-5 text-base-content/70">Loading cohort analytics...</p>
           ) : activeConcept ? (
             <>
-              {/* Detail view for one error type */} 
+              {/* Detail view for the error type selected from the overview. */}
               <div className="mb-[22px] grid gap-4 min-[981px]:grid-cols-[1fr_auto_1fr] min-[981px]:items-start min-[981px]:gap-5">
                 <div className="text-left min-[981px]:col-start-2 min-[981px]:row-start-1 min-[981px]:text-center">
                   <h1 className="text-[clamp(2rem,2.4vw,3rem)] font-bold leading-tight tracking-tight">{activeConcept.title}</h1>
                   <p className="mt-2 text-base text-base-content/65">{activeConcept.description}</p>
                 </div>
                 <div className="flex flex-wrap items-end gap-3.5 min-[981px]:col-start-1 min-[981px]:row-start-1 min-[981px]:pt-[22px]">
+                  {/* Clear the URL selection and return to the overview list. */}
                   <button type="button" className="btn btn-outline" onClick={() => {
                     window.history.replaceState(null, '', window.location.pathname)
                     setSelectedConcept(null)
@@ -274,7 +280,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                     </select>
                 </div>
               </div>
-              {/* Chart: errors per day for this type */}
+              {/* The chart displays how often this error type occurred over time. */}
               <div className="grid gap-[18px] min-[981px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
                 <div className="min-h-[400px] rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
                   <div className="mb-1.5 text-[1.05rem] font-semibold">Error frequency over time</div>
@@ -318,36 +324,12 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                   </ul>
                 </div>
               </div>
-              {/* Outcomes: resolved, attempted or unresolved */} 
-              <div className="mt-[18px] rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
-                <div className="mb-1.5 text-[1.05rem] font-semibold">Debugging assistance outcomes</div>
-                <p className="m-0 text-xs text-base-content/60">Outcome of the final recorded submission in each assistance session</p>
-                <div className="mt-[18px] flex h-7 overflow-hidden rounded-lg border border-base-300 bg-base-100">
-                  {activeConcept.outcomes.map((item) => (
-                    <div key={item.label} className="h-full" style={{ width: `${item.percent}%` }}>
-                      <div className={`h-full ${item.tone === 'resolved' ? 'bg-green-600/90' : item.tone === 'attempted' ? 'bg-amber-500/90' : 'bg-red-600/90'}`} />
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-[18px] grid gap-5 min-[981px]:grid-cols-3">
-                  {activeConcept.outcomes.length === 0 ? <p className="text-sm text-base-content/60">No records found</p> : activeConcept.outcomes.map((item) => (
-                    <div key={item.label} className="text-base-content/80">
-                      <div className="mb-2 text-xs">
-                        <strong className={`text-2xl font-semibold tracking-tight ${item.tone === 'resolved' ? 'text-green-400/90' : item.tone === 'attempted' ? 'text-amber-300/90' : 'text-red-400/90'}`}>{item.count}</strong> • {item.percent}%
-                      </div>
-                      <span>{item.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              {/* AI summary for instructors */}
-              <div className="mt-5">
+              <div className="mt-[18px] grid gap-[18px] min-[981px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+                {/* This panel displays the optional AI-generated explanation. */}
                 <div className="rounded-xl border border-primary/30 bg-base-200 p-5 pb-[18px]">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="mb-1.5 text-[1.05rem] font-semibold">Instructor insight</div>
-                      <p className="m-0 text-xs text-base-content/60">Generated from the aggregated data for this error type.</p>
                     </div>
                     {insight?.generated && (
                       <span className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs text-primary">
@@ -371,11 +353,38 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                     <p className="mt-4 text-sm text-base-content/60">Select an error type to generate an instructor insight.</p>
                   )}
                 </div>
+
+                {/* These bars show whether sessions ended resolved, attempted, or untried. */}
+                <div className="flex h-full flex-col rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
+                  <div className="mb-1.5 text-[1.05rem] font-semibold">Debugging assistance outcomes</div>
+                  <p className="m-0 text-xs text-base-content/60">Outcome of the final recorded submission in each assistance session</p>
+                  <div className="mt-[18px] flex h-7 overflow-hidden rounded-lg border border-base-300 bg-base-100">
+                    {activeConcept.outcomes.map((item) => (
+                      <div key={item.label} className="h-full" style={{ width: `${item.percent}%` }}>
+                        <div className={`h-full ${item.tone === 'resolved' ? 'bg-green-600/90' : item.tone === 'attempted' ? 'bg-amber-500/90' : 'bg-red-600/90'}`} />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex flex-1 flex-col justify-center gap-2">
+                    {activeConcept.outcomes.length === 0 ? <p className="text-sm text-base-content/60">No records found</p> : activeConcept.outcomes.map((item) => (
+                      <div key={item.label} className="flex items-center justify-between gap-3 rounded-lg border border-base-300 bg-base-100/60 px-3 py-2 text-xs text-base-content/80">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className={`h-2 w-2 shrink-0 rounded-full ${item.tone === 'resolved' ? 'bg-green-500' : item.tone === 'attempted' ? 'bg-amber-500' : 'bg-red-500'}`} />
+                          <span className="truncate">{item.label}</span>
+                        </span>
+                        <span className="shrink-0">
+                          <strong className={`text-lg font-semibold tracking-tight ${item.tone === 'resolved' ? 'text-green-400/90' : item.tone === 'attempted' ? 'text-amber-300/90' : 'text-red-400/90'}`}>{item.count}</strong>
+                          <span className="ml-1 text-base-content/60">• {item.percent}%</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </>
           ) : (
             <>
-              {/* Overview: filters, stats and error type list */}
+              {/* The overview provides filters, headline statistics, and selectable error types. */}
               <div className="mb-[22px] grid gap-4 min-[981px]:flex min-[981px]:items-start min-[981px]:justify-between min-[981px]:gap-5">
                 <div className="flex-1">
                 <h1 className="text-[clamp(2rem,2.4vw,3rem)] font-bold leading-tight tracking-tight">
@@ -383,6 +392,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                 </h1>
                 </div>
                 <div className="flex flex-wrap items-end gap-3.5">
+                  {/* Changing either filter reloads the cohort data through the effect above. */}
                   <div className="flex min-w-[140px] flex-col gap-1.5">
                     <label className="text-xs text-base-content/70">Class</label>
                     <select className="select select-bordered h-12 w-full bg-base-100 text-base-content" value={course} onChange={(event) => setCourse(event.target.value)}>
@@ -417,6 +427,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                   </div>
                 </div>
                 <div className="mt-4 h-full overflow-y-auto space-y-1.5 pr-2">
+                  {/* Each error type updates the URL and opens its detail view. */}
                   {concepts.length === 0 ? <p className="py-2.5 text-sm text-base-content/60">No records found</p> : concepts.map((concept) => (
                     <button
                       key={concept.name}
@@ -447,6 +458,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                 </div>
 
                 <ul className="mt-3.5 min-h-0 flex-1 overflow-y-auto pr-2 list-none p-0">
+                    {/* This list shows the most frequent raw error messages in the filtered data. */}
                     {analytics.recurring_errors.length === 0 ? <li className="py-2.5 text-sm text-base-content/60">No records found</li> : analytics.recurring_errors.map((item) => (
                       <li key={item.label} className="flex items-center justify-between gap-4 border-b border-base-300 py-2.5 text-base-content/80 last:border-b-0">
                         <span>{item.label}</span>

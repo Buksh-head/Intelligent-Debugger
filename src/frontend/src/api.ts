@@ -7,6 +7,8 @@ import type { AnalyticsResponse, AnalyticsDateRange, ExecutionResponse, Feedback
 // and the Vite proxy forwards them to the backend.
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
+// These small typed wrappers keep request details in one place and make
+// backend responses available to the React components with checked types.
 // Runs the student's code in the sandbox and returns the output or error.
 export async function executeCode(
   code: string,

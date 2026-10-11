@@ -31,12 +31,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Returns an error message, or null if it worked.
   const signIn: AuthContextValue['signIn'] = async (email, password) => {
+    // Return a simple message for the welcome page instead of exposing the
+    // Supabase error object to every component.
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error?.message ?? null };
   };
 
   // Returns an error message, or null if it worked
   const signUp: AuthContextValue['signUp'] = async (email, password) => {
+    // Registration uses the same small result shape as sign-in.
     const { error } = await supabase.auth.signUp({ email, password });
     return { error: error?.message ?? null };
   };
@@ -51,4 +54,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     </AuthContext.Provider>
   );
 }
-

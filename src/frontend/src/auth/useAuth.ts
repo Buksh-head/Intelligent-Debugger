@@ -6,6 +6,7 @@ import { useContext } from 'react';
 import { AuthContext, type AuthContextValue } from './context';
 
 export function useAuth(): AuthContextValue {
+  // Components use this hook rather than reading the context directly.
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');

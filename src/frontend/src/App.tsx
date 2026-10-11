@@ -9,13 +9,14 @@ import javaLogo from './assets/java.jpg';
 import javascriptLogo from './assets/js.jpg';
 import { Navigate, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import InstructorDashboard from './InstructorDashboard'
-import StudentSetupPage from './pages/StudentSetupPage';
 import WelcomePage from './pages/WelcomePage';
 import ProtectedRoute from './auth/ProtectedRoute';
 import { useAuth } from './auth/useAuth';
 import { useStudentSession } from './session/useStudentSession';
 import type { ExecutionResponse, Explanation, FeedbackMode, Finding, HintStage, SocraticAnswer } from './types';
 import WhyThisHint from './components/WhyThisHint';
+import { getTourSample, hasSeenTour, startStudentTour, tourRunStep } from './tour/studentTour';
+import type { Driver } from 'driver.js';
 import { deleteStudentData, executeCode, getHint } from './api';
 
 import {
@@ -42,6 +43,7 @@ import {
   Trash2,
   Lightbulb,
   Lock,
+  CircleHelp,
 } from 'lucide-react';
 
 type MonacoEditor = Parameters<OnMount>[0];
@@ -84,7 +86,30 @@ const themeOptions = [
 
 type Theme = (typeof themeOptions)[number]['value'];
 const themeStorageKey = 'debugging-assistant.theme';
+const appLogo = '/error-guide-logo.png';
 
+// Width split between the code and assistant panels, as the left panel's
+// share in percent. Saved per session so a new session starts at 50/50.
+const splitStoragePrefix = 'debugging-assistant.panel-split.';
+const defaultSplit = 50;
+const minSplit = 30;
+const maxSplit = 70;
+
+const clampSplit = (value: number) => Math.min(maxSplit, Math.max(minSplit, value));
+
+// This session's saved split, or the 50/50 default.
+const getSavedSplit = (sessionId: string | null): number => {
+  if (!sessionId) return defaultSplit;
+  try {
+    const saved = Number(sessionStorage.getItem(splitStoragePrefix + sessionId));
+    return saved > 0 ? clampSplit(saved) : defaultSplit;
+  } catch {
+    return defaultSplit; // storage can be blocked, the default still works
+  }
+};
+
+// Keep the selected editor language and theme consistent when students
+// return to the app or switch between sessions.
 // Use the saved theme if there is one, otherwise match the device's light/dark setting.
 const getInitialTheme = (): Theme => {
   const savedTheme = localStorage.getItem(themeStorageKey);
@@ -126,7 +151,7 @@ function App() {
   const [currentStage, setCurrentStage] = useState<number | null>(null);
   const [hintError, setHintError] = useState<string | null>(null);
 
-   // Session ID and data deletion
+  // Session ID and data deletion
   const [idCopied, setIdCopied] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -144,6 +169,13 @@ function App() {
   const { signOut } = useAuth();
   const { session: studentSession, endSession } = useStudentSession();
   const sessionId = studentSession?.id ?? null;
+
+  // Panel split for this session.
+  const [split, setSplit] = useState(() => getSavedSplit(sessionId));
+  const [isDragging, setIsDragging] = useState(false);
+  // True while the intro tour has sample code in the editor. Run then shows
+  // a made-up result instead of calling the backend.
+  const [isTourDemo, setIsTourDemo] = useState(false);
 
   const selectedCourse = studentSession?.course ?? '';
 
@@ -175,6 +207,8 @@ function App() {
     setDeleteError(null);
     setFeedbackMode('hints');
     setHasChosenMode(false);
+    setSplit(getSavedSplit(sessionId));
+    setIsTourDemo(false);
   }
 
   // Requests still in flight when the session changes must not write into the
@@ -191,9 +225,12 @@ function App() {
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const outputRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const mainRef = useRef<HTMLElement | null>(null);
+  const tourRef = useRef<Driver | null>(null);
 
   // The final stage reveals the answer, so there is nothing further to unlock.
   const isFinalStage = currentStage === 5;
+  const sendDisabled = currentStage === null || isLoading || isHintLoading || !input.trim() || isFinalStage || isSocratic;
 
   // Chat history is retained between runs, so only use the first assistant
   // message after the most recent resubmission in the current diagnosis.
@@ -211,24 +248,20 @@ function App() {
   const helpChosen = firstHintForCurrentRun !== undefined;
   const hintsInProgress = helpChosen && !answeredThisRun && !isFinalStage;
 
-  // A short pointer to the next action. The hint itself is already in the
-  // chat, so repeating it here only doubled the text.
-  const nextStep = !helpChosen
-    ? hasChosenMode
-      ? isSocratic
-        ? 'Ask for the answer below.'
-        : 'Ask for a hint below.'
-      : 'Choose how you want help below.'
-    : answeredThisRun
-      ? 'Follow the fix below, then run your code again.'
-      : isFinalStage
-        ? 'Use the hints to fix your code, then run it again.'
-        : 'Reply to the hint below.';
-
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem(themeStorageKey, theme);
   }, [theme]);
+
+  // Keep the panel split for the rest of this session.
+  useEffect(() => {
+    if (!sessionId) return;
+    try {
+      sessionStorage.setItem(splitStoragePrefix + sessionId, String(split));
+    } catch {
+      // Storage can be blocked, the split just won't be kept.
+    }
+  }, [split, sessionId]);
 
   // Reload the saved theme when the student page opens.
   useEffect(() => {
@@ -283,8 +316,39 @@ function App() {
     output.scrollTo({ top: output.scrollHeight });
   }, [result]);
 
+  // In the tour demo, move on from the "click Run" step once the sample
+  // result is showing. This runs after render, so the error box exists.
+  useEffect(() => {
+    const tour = tourRef.current;
+    if (!isTourDemo || !result || !tour?.isActive()) return;
+    if (tour.getActiveStep()?.element === tourRunStep) tour.moveNext();
+  }, [result, isTourDemo]);
+
   const handleEditorMount: OnMount = (editor) => {
     editorRef.current = editor;
+  };
+
+  // Dragging the panel divider. Capturing the pointer keeps the drag going
+  // when it moves over the editor or off the divider.
+  const handleDividerPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setIsDragging(true);
+  };
+
+  const handleDividerPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging) return;
+    const main = mainRef.current;
+    if (!main) return;
+    const rect = main.getBoundingClientRect();
+    setSplit(clampSplit(((event.clientX - rect.left) / rect.width) * 100));
+  };
+
+  const handleDividerPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setIsDragging(false);
   };
 
   // Scroll to the error line and put the cursor there.
@@ -326,13 +390,20 @@ function App() {
   // Run the code in the sandbox and show the result.
   // The response is ignored if the session changed while waiting.
   const handleRun = async () => {
+    // During the intro tour, show the sample result without calling the backend.
+    if (isTourDemo) {
+      setApiError(null);
+      resetProgression();
+      setResult({ ...getTourSample(editorLanguage.label).result });
+      return;
+    }
     if (!code.trim()) {
       setApiError('Please write some code before running it.');
       return;
     }
     if (!studentSession?.course) {
       setApiError('Please select your course before debugging.');
-      navigate('/student/setup');
+      navigate('/');
       return;
     }
     const requestSessionId = sessionId;
@@ -359,6 +430,42 @@ function App() {
       if (sessionIdRef.current === requestSessionId) setIsLoading(false);
     }
   };
+
+  // Starts the intro tour. With an empty editor it runs as a demo and puts in
+  // sample code to try. Code the student has written is never replaced.
+  const startTour = () => {
+    const demo = !code.trim();
+    const sample = getTourSample(editorLanguage.label);
+    setIsTourDemo(demo);
+    if (demo) setResult(null);
+    tourRef.current = startStudentTour({
+      languageLabel: editorLanguage.label,
+      extension: editorLanguage.extension,
+      demo,
+      onLoadSample: () => setCode(sample.code),
+      // Remove the sample code and its made-up result so the student starts
+      // fresh. Code the student typed over the sample is left alone.
+      onEnd: () => {
+        tourRef.current = null;
+        if (!demo) return;
+        setIsTourDemo(false);
+        setCode((current) => (current === sample.code ? '' : current));
+        setResult(null);
+        decorationsRef.current?.clear();
+      },
+    });
+  };
+  // Start the tour by itself the first time this browser opens the Student View.
+  // The ref stops it starting twice when React runs effects twice in development.
+  const autoTourStartedRef = useRef(false);
+  useEffect(() => {
+    if (location.pathname !== '/student' || !sessionId) return;
+    if (autoTourStartedRef.current || hasSeenTour()) return;
+    autoTourStartedRef.current = true;
+    startTour();
+    // Only re-checked when the page or session changes, not on every edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, sessionId]);
 
   // Builds the Finding the hints endpoint expects from the current execution result.
   const buildFinding = (execution: ExecutionResponse): Finding => ({
@@ -460,7 +567,7 @@ function App() {
   // stage task and decides whether the stage advances - the stage itself is
   // never sent from here.
   const handleSend = async () => {
-    if (!input.trim() || isHintLoading || isFinalStage || isSocratic || currentStage === null) return;
+    if (sendDisabled) return;
     if (!result?.error || result.error_id == null) return;
 
     const studentText = input.trim();
@@ -544,12 +651,12 @@ function App() {
               <header className="navbar mb-4 flex-row items-start gap-4 lg:items-center">
                 <div className="flex flex-1 items-center gap-3">
                   <img
-                    src={editorLanguage.logo}
-                    alt={`${editorLanguage.label} logo`}
-                    className="h-10 shrink-0 sm:h-[50px]"
+                    src={appLogo}
+                    alt="Error Guide logo"
+                    className="h-16 w-16 shrink-0 rounded-box object-contain sm:h-[88px] sm:w-[88px]"
                   />
                   <div className="min-w-0">
-                    <h1 className="font-mono text-xl font-semibold leading-tight tracking-wide text-primary sm:text-2xl sm:tracking-wider lg:text-3xl">INTELLIGENT {editorLanguage.label.toUpperCase()} DEBUGGER</h1>
+                    <h1 className="font-mono text-xl font-semibold leading-tight tracking-wide text-primary sm:text-2xl sm:tracking-wider lg:text-3xl">ERROR GUIDE</h1>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       <p>Student View{selectedCourse ? ` | ${selectedCourse}` : ''}</p>
                       {sessionId && (
@@ -566,6 +673,17 @@ function App() {
                     </div>
                   </div>
                 </div>
+                {/* Replays the intro tour. */}
+                <button
+                  type="button"
+                  data-tour="help"
+                  className="btn btn-circle btn-ghost h-15 w-15 self-start lg:self-auto"
+                  onClick={startTour}
+                  aria-label="Show the intro tour"
+                  title="Show the intro tour"
+                >
+                  <CircleHelp size={28} />
+                </button>
                 {/* Profile menu: theme, session ID, delete data, log out */}
                 <div className="dropdown dropdown-end self-start lg:self-auto">
                   <button
@@ -595,7 +713,7 @@ function App() {
                     <div className="mb-3 flex items-center justify-between">
                       <div>
                         <div className="font-medium">Theme</div>
-                        <div className="text-sm text-base-content/60">
+                        <div className="text-sm text-base-content/60 btn-outline">
                           {theme === 'dark' ? 'Dark mode' : 'Light mode'}
                         </div>
                       </div>
@@ -616,7 +734,7 @@ function App() {
                         </code>
                         <button
                           type="button"
-                          className="btn btn-xs btn-ghost"
+                          className="btn btn-xs btn-outline"
                           onClick={handleCopySessionId}
                           disabled={!sessionId}
                           aria-label="Copy session ID"
@@ -661,7 +779,7 @@ function App() {
                     ) : (
                       <button
                         type="button"
-                        className="btn btn-outline btn-sm mb-3 w-full"
+                        className="btn btn-primary btn-sm mb-3 w-full"
                         onClick={() => {
                           menuRef.current?.focus();
                           setConfirmingDelete(true);
@@ -674,7 +792,7 @@ function App() {
                     )}
                     <button
                       type="button"
-                      className="btn btn-outline btn-error w-full"
+                      className="btn btn-error w-full"
                       onClick={handleLogout}
                     >
                       <LogOut size={16} />
@@ -684,18 +802,30 @@ function App() {
                 </div>
               </header>
 
-              <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-2 xl:grid-rows-[minmax(0,1fr)] xl:gap-6">
+              <main
+                ref={mainRef}
+                className={`grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,var(--left))_1.5rem_minmax(0,var(--right))] xl:grid-rows-[minmax(0,1fr)] xl:gap-0 ${isDragging ? 'cursor-col-resize select-none' : ''}`}
+                style={{ '--left': `${split}fr`, '--right': `${100 - split}fr` } as React.CSSProperties}
+              >
                 {/* Left side: code editor and output */}
                 <section className="flex flex-col gap-3 xl:min-h-0">
-                  <div className="flex h-[400px] min-h-0 flex-col sm:h-[480px] xl:h-auto xl:flex-[3]">
-                    <div className="rounded-t-box flex justify-between items-center px-4 py-1.5 bg-base-300 text-xs text-base-content/60">
-                      <span>Your {editorLanguage.label} Code</span>
-                      <div className="flex items-center gap-3">
+                  <div data-tour="editor" className="student-panel card flex h-[400px] min-h-0 flex-col overflow-hidden rounded-box border border-base-300 bg-base-200 shadow-sm sm:h-[480px] xl:h-auto xl:flex-[3]">
+                    <div className="student-panel-header rounded-t-box flex h-14 shrink-0 items-center justify-between bg-base-300 px-4 py-2 text-s text-base-content/60">
+                      <span className="flex items-center gap-2">
+                        <img
+                          src={editorLanguage.logo}
+                          alt={`${editorLanguage.label} logo`}
+                          className="h-7 w-7 object-contain"
+                        />
+                        {editorLanguage.label} Code
+                      </span>
+                      <div className="flex items-center gap-5">
                         <span>main.{editorLanguage.extension}</span>
                         {/* Pinned to the editor header so it is always in view next to the code it runs. */}
                         <button
                           type="button"
-                          className="btn btn-primary btn-sm min-w-24"
+                          data-tour="run"
+                          className="btn btn-primary btn-sm min-w-24 text-sm"
                           onClick={handleRun}
                           disabled={isLoading || isHintLoading}
                           aria-busy={isLoading}
@@ -706,7 +836,7 @@ function App() {
                       </div>
                     </div>
 
-                    <div className="relative flex-1 bg-[#1e1e1e] rounded-b-box overflow-hidden border border-base-300">
+                    <div className="student-editor-surface relative flex-1 bg-[#1e1e1e] rounded-b-box overflow-hidden border border-base-300">
                       <Editor
                         height="100%"
                         language={editorLanguage.monaco}
@@ -720,15 +850,14 @@ function App() {
                           setApiError(null);
                         }}
                         onMount={handleEditorMount}
-                        options={{ minimap: { enabled: false }, fontSize: 14 }}
-                      />
+                        options={{ minimap: { enabled: false }, fontSize: 14, automaticLayout: true }} />
 
                       {!code && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
                           <p className={`${theme === 'light' ? 'text-base-content/70' : 'text-white/70'} text-center px-6 mb-2 text-lg font-medium`}>Write your failing {editorLanguage.label} code here...</p>
                           <p className={`${theme === 'light' ? 'text-base-content/50' : 'text-white/50'} mb-4`}>or</p>
                           <input type="file" accept={`.${editorLanguage.extension}`} className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
-                          <button className="btn btn-outline btn-primary pointer-events-auto" onClick={() => fileInputRef.current?.click()}>
+                          <button data-tour="upload" className="btn btn-primary pointer-events-auto" onClick={() => fileInputRef.current?.click()}>
                             <Upload size={16} />Upload .{editorLanguage.extension} File</button>
                         </div>
                       )}
@@ -737,8 +866,8 @@ function App() {
 
                   {/* Output: what the program printed, then the error if it crashed.
                       Styled like the editor above, including its theme background. */}
-                  <div className="flex min-h-[220px] flex-col xl:min-h-0 xl:flex-[1]">
-                    <h2 className="rounded-t-box flex items-center gap-2 px-4 py-2 bg-base-300 text-xs text-base-content/60">
+                  <div data-tour="output" className="student-panel card flex min-h-[220px] flex-col overflow-hidden rounded-box border border-base-300 bg-base-200 shadow-sm xl:min-h-0 xl:flex-[1]">
+                    <h2 className="student-panel-header rounded-t-box flex items-center gap-2 px-4 py-2 bg-base-300 text-xs text-base-content/60">
                       <SquareTerminal size={14} />
                       Output
                     </h2>
@@ -746,7 +875,7 @@ function App() {
                       ref={outputRef}
                       role="log"
                       aria-label="Program output"
-                      className={`flex-1 overflow-auto rounded-b-box border border-base-300 px-4 py-3 font-mono text-sm text-base-content ${theme === 'light' ? 'bg-white' : 'bg-[#1e1e1e]'}`}
+                      className={`student-output-surface flex-1 overflow-auto rounded-b-box border border-base-300 px-4 py-3 font-mono text-sm text-base-content ${theme === 'light' ? 'bg-white' : 'bg-[#1e1e1e]'}`}
                     >
                       {isLoading ? (
                         <p className="text-base-content/60">Running...</p>
@@ -780,12 +909,35 @@ function App() {
                     </div>
                   </div>
                 </section>
-                
+
+                {/* Divider between the panels. Drag to resize, double-click to reset.
+                  Wide screens only, where they sit side by side. */}
+                <div
+                  role="separator"
+                  data-tour="divider"
+                  aria-orientation="vertical"
+                  aria-label="Resize code and assistant panels"
+                  aria-valuemin={minSplit}
+                  aria-valuemax={maxSplit}
+                  aria-valuenow={Math.round(split)}
+                  title="Drag to resize. Double-click to reset."
+                  className="group hidden cursor-col-resize touch-none items-center justify-center xl:flex"
+                  onPointerDown={handleDividerPointerDown}
+                  onPointerMove={handleDividerPointerMove}
+                  onPointerUp={handleDividerPointerUp}
+                  onPointerCancel={handleDividerPointerUp}
+                  onDoubleClick={() => setSplit(defaultSplit)}
+                >
+                  <div
+                    className={`h-full w-1 rounded-full transition-colors ${isDragging ? 'bg-primary' : 'bg-base-300 group-hover:bg-primary/60'}`}
+                  />
+                </div>
+
                 {/* Right side: run results and hint chat */}
                 <section className="flex h-[540px] min-h-0 flex-col sm:h-[620px] xl:h-auto">
-                  <div className="student-card card bg-base-200 shadow-sm flex-1 flex flex-col min-h-0 overflow-hidden border border-base-300">
+                  <div data-tour="assistant" className="student-card card bg-base-200 shadow-sm flex-1 flex flex-col min-h-0 overflow-hidden border border-base-300">
 
-                    <div className="bg-base-300 px-4 py-3 rounded-t-box border-b border-base-300/50 flex flex-wrap items-center gap-2">
+                    <div className="student-panel-header flex h-14 shrink-0 flex-wrap items-center gap-2 rounded-t-box border-b border-base-300/50 bg-base-300 px-4 py-2">
                       <Sparkles className="mr-1 text-primary size-6" />
                       <h2 className="flex-1 font-semibold text-xl tracking-wider">LLM ASSISTANT</h2>
                     </div>
@@ -811,42 +963,35 @@ function App() {
                         )}
 
                         {result?.error && (
-                          <div className="rounded-box border border-error/40 bg-error/10 p-3 text-sm" role="alert">
-                            <div className="grid gap-3 sm:grid-cols-3">
-                              <div className="flex items-start gap-2">
-                                <AlertCircle size={17} className="mt-0.5 shrink-0 text-error" />
-                                <div>
+                          <div data-tour="error" className="rounded-box border border-error/40 bg-error/10 px-3 py-2 text-sm" role="alert">
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                                <AlertCircle size={17} className="shrink-0 text-error" />
                                 <p className="text-xs font-semibold tracking-wide text-base-content/60">WHAT HAPPENED</p>
-                                <p className="mt-1 font-medium">{result.error.error_type}</p>
-                                <p className="mt-1 text-base-content/75">{result.error.message}</p>
-                                </div>
+                                <p className="font-medium">{result.error.error_type}</p>
+                                <p className="min-w-0 text-base-content/75">{result.error.message}</p>
                               </div>
 
-                              <div>
+                              <div className="ml-auto flex shrink-0 items-center gap-2">
                                 <p className="text-xs font-semibold tracking-wide text-base-content/60">WHERE TO LOOK</p>
                                 {result.error.line_number ? (
                                   <button
                                     type="button"
-                                    className="btn btn-sm btn-outline btn-error mt-1"
+                                    className="btn btn-sm btn-error"
                                     onClick={() => focusErrorLine(result.error!.line_number!)}
                                   >
                                     Go to line {result.error.line_number}
                                   </button>
                                 ) : (
-                                  <p className="mt-1 text-base-content/75">Review the code near where this error occurs.</p>
+                                  <p className="text-base-content/75">Review the code near the error.</p>
                                 )}
-                              </div>
-
-                              <div>
-                                <p className="text-xs font-semibold tracking-wide text-base-content/60">TRY THIS NEXT</p>
-                                <p className="mt-1 text-base-content/75">{nextStep}</p>
                               </div>
                             </div>
                           </div>
                         )}
                       </div>
 
-                      <div className="flex-1 bg-base-100 rounded-box border border-base-300 flex flex-col overflow-hidden">
+                      <div className="student-chat-surface flex-1 bg-base-100 rounded-box border border-base-300 flex flex-col overflow-hidden">
 
                         <div ref={messagesContainerRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto p-3 sm:p-4">
                           {!result?.error && !isLoading && messages.length === 0 && (
@@ -909,7 +1054,7 @@ function App() {
                                     href={m.resourceUrl!}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="chat-footer mt-2 btn btn-sm btn-outline btn-primary gap-2"
+                                    className="chat-footer mt-2 btn btn-sm btn-outline hover:btn-primary gap-2"
                                   >
                                     <BookOpen size={14} />
                                     {m.resourceLabel ?? 'Open learning resource'}
@@ -930,12 +1075,12 @@ function App() {
                           {/* The choice is offered where the student asks for help, so
                               there is no separate setting to find first. */}
                           {result?.error && !helpChosen && !isHintLoading && !isLoading && !hasChosenMode && (
-                            <div className="flex flex-col gap-2">
+                            <div data-tour="help-choice" className="flex flex-col gap-2">
                               <p className="text-sm font-medium">How do you want help?</p>
                               <div className="grid gap-2 sm:grid-cols-2">
                                 <button
                                   type="button"
-                                  className="btn btn-outline btn-primary h-auto flex-col items-start gap-1 py-3 text-left"
+                                  className="btn btn-primary h-auto flex-col items-start gap-1 py-3 text-left"
                                   onClick={chooseHints}
                                 >
                                   <span className="flex items-center gap-2 font-semibold">
@@ -946,7 +1091,7 @@ function App() {
                                 </button>
                                 <button
                                   type="button"
-                                  className="btn btn-outline btn-primary h-auto flex-col items-start gap-1 py-3 text-left"
+                                  className="btn btn-primary h-auto flex-col items-start gap-1 py-3 text-left"
                                   onClick={chooseAnswer}
                                 >
                                   <span className="flex items-center gap-2 font-semibold">
@@ -964,7 +1109,7 @@ function App() {
                               other mode sits beside it as a button too, with the last
                               choice first and filled in. */}
                           {result?.error && !helpChosen && !isHintLoading && !isLoading && hasChosenMode && (
-                            <div className="flex flex-wrap gap-2">
+                            <div data-tour="help-choice" className="flex flex-wrap gap-2">
                               {isSocratic ? (
                                 <>
                                   {answerChoiceButton(true)}
@@ -1002,7 +1147,7 @@ function App() {
 
                         </div>
 
-                        <div className="flex gap-2 bg-base-300 p-2">
+                        <div data-tour="chat-input" className="student-chat-composer flex gap-2 bg-base-300 p-2">
                           <input
                             type="text"
                             className="input input-md flex-1 bg-base-100 font-medium focus:outline-none focus:border-primary"
@@ -1024,11 +1169,9 @@ function App() {
                             disabled={currentStage === null || isLoading || isHintLoading || isFinalStage || isSocratic}
                           />
                           <button
-                            className="btn btn-outline btn-primary pointer-events-auto"
+                            className={`btn btn-primary ${sendDisabled ? 'pointer-events-none cursor-not-allowed' : ''}`}
                             onClick={handleSend}
-                            disabled={
-                              currentStage === null || isLoading || isHintLoading || !input.trim() || isFinalStage || isSocratic
-                            }
+                            disabled={sendDisabled}
                           >
                             {isHintLoading ? <span className="loading loading-spinner loading-sm"></span> : 'Send'}
                             <Send size={16} />
@@ -1047,7 +1190,6 @@ function App() {
       {/* Old login and register pages, now sent to the welcome page. */}
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/register" element={<Navigate to="/" replace />} />
-      <Route path="/student/setup" element={<StudentSetupPage />} />
       {/* Instructor dashboard. Only for logged-in instructors. */}
       <Route
         path="/instructor"
