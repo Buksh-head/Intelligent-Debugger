@@ -13,8 +13,9 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from .classifier import NUMERIC_FEATURES
 from .features import extract_features
-from .labels import ERROR_TYPE_FEATURE, FEATURE_LABELS, MESSAGE_TEXT_FEATURE, PRESENCE_FEATURES
+from .labels import ERROR_TYPE_FEATURE, FEATURE_LABELS, MESSAGE_TEXT_FEATURE
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,12 @@ class AttributionExplainer:
             class_index = self._class_index(frame)
 
             values = self.shap_values(transformed[0], class_index)
-            absent = frozenset(f for f in PRESENCE_FEATURES if not frame[f].iloc[0])
+            # SHAP credits a trait the program has none of, because none
+            # differs from the average program. Every label describes the
+            # program as having the trait ("how many loops your program
+            # has"), so showing one for a loop-free program sends the
+            # student looking for loops that are not there.
+            absent = frozenset(f for f in NUMERIC_FEATURES if not frame[f].iloc[0])
             return self._aggregate(values, top_n, code_features_only, absent)
         except Exception as e:
             logger.error(f"SHAP attribution failed for error_type={error_type}: {e}")

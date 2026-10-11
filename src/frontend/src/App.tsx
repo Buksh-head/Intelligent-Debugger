@@ -21,7 +21,8 @@ import { deleteStudentData, executeCode, getHint } from './api';
 import {
   LogOut,
   Upload,
-  BugPlay,
+  Play,
+  SquareTerminal,
   Sparkles,
   Send,
   AlertTriangle,
@@ -40,6 +41,7 @@ import {
   Check,
   Trash2,
   Lightbulb,
+  Lock,
 } from 'lucide-react';
 
 type MonacoEditor = Parameters<OnMount>[0];
@@ -112,7 +114,6 @@ function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   // Code and run results 
   const [code, setCode] = useState('');
-  const [expectedBehavior, setExpectedBehavior] = useState('');
 
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<ExecutionResponse | null>(null);
@@ -133,6 +134,9 @@ function App() {
 
   // Hints or Answer mode
   const [feedbackMode, setFeedbackMode] = useState<FeedbackMode>('hints');
+  // Whether the student has picked a mode yet this session. Until then both
+  // choices are laid out; after that the last choice is offered first.
+  const [hasChosenMode, setHasChosenMode] = useState(false);
   const isSocratic = feedbackMode === 'socratic';
 
   const navigate = useNavigate();
@@ -157,7 +161,6 @@ function App() {
   if (sessionId !== stateSessionId) {
     setStateSessionId(sessionId);
     setCode('');
-    setExpectedBehavior('');
     setIsLoading(false);
     setResult(null);
     setApiError(null);
@@ -170,6 +173,8 @@ function App() {
     setConfirmingDelete(false);
     setIsDeleting(false);
     setDeleteError(null);
+    setFeedbackMode('hints');
+    setHasChosenMode(false);
   }
 
   // Requests still in flight when the session changes must not write into the
@@ -184,6 +189,7 @@ function App() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const outputRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   // The final stage reveals the answer, so there is nothing further to unlock.
@@ -199,10 +205,25 @@ function App() {
     .slice(currentRunStart)
     .find((message) => message.role === 'assistant');
   const answeredThisRun = messages.slice(currentRunStart).some((message) => message.answer);
-  // The mode is fixed once feedback starts for an error, so Hints can't be
-  // skipped by switching to Answer. Running the code again unlocks it.
-  const modeLocked = firstHintForCurrentRun !== undefined;
-  const lockedTitle = 'Run your code again to change mode';
+  // The student picks Hints or Answer when they first ask for help on an
+  // error. The choice holds until the code is run again, so the hints can't
+  // be skipped by asking for the answer halfway through.
+  const helpChosen = firstHintForCurrentRun !== undefined;
+  const hintsInProgress = helpChosen && !answeredThisRun && !isFinalStage;
+
+  // A short pointer to the next action. The hint itself is already in the
+  // chat, so repeating it here only doubled the text.
+  const nextStep = !helpChosen
+    ? hasChosenMode
+      ? isSocratic
+        ? 'Ask for the answer below.'
+        : 'Ask for a hint below.'
+      : 'Choose how you want help below.'
+    : answeredThisRun
+      ? 'Follow the fix below, then run your code again.'
+      : isFinalStage
+        ? 'Use the hints to fix your code, then run it again.'
+        : 'Reply to the hint below.';
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -254,6 +275,14 @@ function App() {
     });
   }, [messages, isHintLoading]);
 
+  // Keep the end of the output in view, where the error is shown.
+  useEffect(() => {
+    const output = outputRef.current;
+    if (!output) return;
+
+    output.scrollTo({ top: output.scrollHeight });
+  }, [result]);
+
   const handleEditorMount: OnMount = (editor) => {
     editorRef.current = editor;
   };
@@ -296,9 +325,9 @@ function App() {
 
   // Run the code in the sandbox and show the result.
   // The response is ignored if the session changed while waiting.
-  const handleDebug = async () => {
+  const handleRun = async () => {
     if (!code.trim()) {
-      setApiError('Please write some code before debugging.');
+      setApiError('Please write some code before running it.');
       return;
     }
     if (!studentSession?.course) {
@@ -313,7 +342,6 @@ function App() {
     try {
       const response = await executeCode(
         code,
-        expectedBehavior,
         studentSession?.course,
         studentSession?.language || editorLanguage.label,
         requestSessionId ?? undefined,
@@ -400,6 +428,33 @@ function App() {
       if (sessionIdRef.current === requestSessionId) setIsHintLoading(false);
     }
   };
+
+  const chooseHints = () => {
+    setFeedbackMode('hints');
+    setHasChosenMode(true);
+    handleGetHint();
+  };
+
+  const chooseAnswer = () => {
+    setFeedbackMode('socratic');
+    setHasChosenMode(true);
+    handleGetAnswer();
+  };
+
+  // The two choices offered on later runs. The last-used one is filled in.
+  const hintChoiceButton = (lastUsed: boolean) => (
+    <button type="button" className={`btn btn-primary ${lastUsed ? '' : 'btn-outline'}`} onClick={chooseHints}>
+      <HandHelping size={16} />
+      Give me a hint
+    </button>
+  );
+
+  const answerChoiceButton = (lastUsed: boolean) => (
+    <button type="button" className={`btn btn-primary ${lastUsed ? '' : 'btn-outline'}`} onClick={chooseAnswer}>
+      <Lightbulb size={16} />
+      Show me the answer
+    </button>
+  );
 
   // Sends the student's reply. The backend classifies it against the current
   // stage task and decides whether the stage advances - the stage itself is
@@ -630,13 +685,24 @@ function App() {
               </header>
 
               <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-2 xl:grid-rows-[minmax(0,1fr)] xl:gap-6">
-                {/* Left side: code editor and expected behaviour */}
+                {/* Left side: code editor and output */}
                 <section className="flex flex-col gap-3 xl:min-h-0">
                   <div className="flex h-[400px] min-h-0 flex-col sm:h-[480px] xl:h-auto xl:flex-[3]">
-                    <div className="rounded-t-box flex justify-between items-center px-4 py-2 bg-base-300 text-xs text-base-content/60">
+                    <div className="rounded-t-box flex justify-between items-center px-4 py-1.5 bg-base-300 text-xs text-base-content/60">
                       <span>Your {editorLanguage.label} Code</span>
                       <div className="flex items-center gap-3">
                         <span>main.{editorLanguage.extension}</span>
+                        {/* Pinned to the editor header so it is always in view next to the code it runs. */}
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm min-w-24"
+                          onClick={handleRun}
+                          disabled={isLoading || isHintLoading}
+                          aria-busy={isLoading}
+                        >
+                          {isLoading ? <span className="loading loading-spinner loading-xs"></span> : <Play size={14} fill="currentColor" />}
+                          Run
+                        </button>
                       </div>
                     </div>
 
@@ -669,19 +735,49 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="student-card flex min-h-[220px] flex-col rounded-box bg-base-200 p-3 shadow-sm xl:min-h-0 xl:flex-[1]">
-                    <h2 className="text-sm font-semibold tracking-wider mb-2">EXPECTED BEHAVIOUR (OPTIONAL)</h2>
-                    <div className="flex-1 flex">
-                      <textarea
-                        className="textarea textarea-bordered border-base-300 w-full flex-1 resize-none focus:outline-none focus:border-primary"
-                        placeholder="Explain what your code is supposed to do..."
-                        value={expectedBehavior}
-                        onChange={(e) => setExpectedBehavior(e.target.value)}
-                      />
+                  {/* Output: what the program printed, then the error if it crashed.
+                      Styled like the editor above, including its theme background. */}
+                  <div className="flex min-h-[220px] flex-col xl:min-h-0 xl:flex-[1]">
+                    <h2 className="rounded-t-box flex items-center gap-2 px-4 py-2 bg-base-300 text-xs text-base-content/60">
+                      <SquareTerminal size={14} />
+                      Output
+                    </h2>
+                    <div
+                      ref={outputRef}
+                      role="log"
+                      aria-label="Program output"
+                      className={`flex-1 overflow-auto rounded-b-box border border-base-300 px-4 py-3 font-mono text-sm text-base-content ${theme === 'light' ? 'bg-white' : 'bg-[#1e1e1e]'}`}
+                    >
+                      {isLoading ? (
+                        <p className="text-base-content/60">Running...</p>
+                      ) : !result ? (
+                        <p className="text-base-content/50">Run your code to see its output here.</p>
+                      ) : (
+                        <>
+                          {result.stdout && <pre className="whitespace-pre-wrap break-words">{result.stdout}</pre>}
+                          {/* A crash shows as "IndexError: list index out of range", the
+                              last line of the traceback. The full traceback, with its
+                              sandbox file paths, is more than a first-year needs. */}
+                          {result.error ? (
+                            <pre className="whitespace-pre-wrap break-words text-error">
+                              {result.error.message ? `${result.error.error_type}: ${result.error.message}` : result.error.error_type}
+                            </pre>
+                          ) : (
+                            result.stderr && <pre className="whitespace-pre-wrap break-words text-error">{result.stderr}</pre>
+                          )}
+                          {result.timed_out && (
+                            // Warning yellow is unreadable as text on white, so it colours the icon only.
+                            <p className="flex items-center gap-2">
+                              <AlertTriangle size={14} className="shrink-0 text-warning" />
+                              Program stopped: it ran longer than the time limit.
+                            </p>
+                          )}
+                          {!result.stdout && !result.stderr && !result.timed_out && (
+                            <p className="text-base-content/60">Program finished with no output.</p>
+                          )}
+                        </>
+                      )}
                     </div>
-                    <button className="btn btn-outline btn-primary pointer-events-auto mt-2 h-11 w-full" onClick={handleDebug} disabled={isLoading || isHintLoading}><BugPlay size={16} />
-                      {isLoading ? <span className="loading loading-spinner loading-sm"></span> : 'Debug my code'}
-                    </button>
                   </div>
                 </section>
                 
@@ -692,33 +788,6 @@ function App() {
                     <div className="bg-base-300 px-4 py-3 rounded-t-box border-b border-base-300/50 flex flex-wrap items-center gap-2">
                       <Sparkles className="mr-1 text-primary size-6" />
                       <h2 className="flex-1 font-semibold text-xl tracking-wider">LLM ASSISTANT</h2>
-                      <div className="join" role="group" aria-label="Feedback mode">
-                        <button
-                          type="button"
-                          className={`btn btn-sm join-item ${!isSocratic ? 'btn-primary' : 'btn-outline'}`}
-                          onClick={() => setFeedbackMode('hints')}
-                          disabled={isHintLoading || modeLocked}
-                          aria-pressed={!isSocratic}
-                          title={modeLocked ? lockedTitle : 'Step-by-step hints that help you find the fix yourself'}
-                        >
-                          <HandHelping size={14} />
-                          Hints
-                        </button>
-                        <button
-                          type="button"
-                          className={`btn btn-sm join-item ${isSocratic ? 'btn-primary' : 'btn-outline'}`}
-                          onClick={() => setFeedbackMode('socratic')}
-                          disabled={isHintLoading || modeLocked}
-                          aria-pressed={isSocratic}
-                          title={modeLocked ? lockedTitle : 'Explains what went wrong and how to fix it straight away'}
-                        >
-                          <Lightbulb size={14} />
-                          Answer
-                        </button>
-                      </div>
-                      {modeLocked && (
-                        <p className="w-full text-right text-xs text-base-content/60">{lockedTitle}.</p>
-                      )}
                     </div>
 
                     <div className="flex flex-1 min-h-0 flex-col gap-1 p-3 sm:p-4">
@@ -735,10 +804,9 @@ function App() {
                         )}
 
                         {result && !result.timed_out && !result.error && (
-                          <div className="alert alert-success text-sm p-3 flex-col items-start gap-1.5">
+                          <div className="alert alert-success text-sm p-3">
                             <CheckCircle2 size={16} className="shrink-0 my-auto" />
                             <span className="font-bold my-auto">Execution Successful</span>
-                            {result.stdout && <pre className="max-h-48 w-full overflow-auto rounded bg-black/10 p-2 text-sm">{result.stdout}</pre>}
                           </div>
                         )}
 
@@ -771,12 +839,7 @@ function App() {
 
                               <div>
                                 <p className="text-xs font-semibold tracking-wide text-base-content/60">TRY THIS NEXT</p>
-                                <p className="mt-1 text-base-content/75">
-                                  {firstHintForCurrentRun?.text ??
-                                    (isSocratic
-                                      ? 'Ask for an explanation below to see the fix.'
-                                      : 'Request a hint below for a guided next step.')}
-                                </p>
+                                <p className="mt-1 text-base-content/75">{nextStep}</p>
                               </div>
                             </div>
                           </div>
@@ -864,18 +927,68 @@ function App() {
                             );
                           })}
 
-                          {result?.error && !isSocratic && currentStage === null && !isHintLoading && !isLoading && (
-                            <button className="btn btn-outline btn-primary pointer-events-auto self-start" onClick={handleGetHint}>
-                              <HandHelping size={16} />
-                              Get a hint
-                            </button>
+                          {/* The choice is offered where the student asks for help, so
+                              there is no separate setting to find first. */}
+                          {result?.error && !helpChosen && !isHintLoading && !isLoading && !hasChosenMode && (
+                            <div className="flex flex-col gap-2">
+                              <p className="text-sm font-medium">How do you want help?</p>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <button
+                                  type="button"
+                                  className="btn btn-outline btn-primary h-auto flex-col items-start gap-1 py-3 text-left"
+                                  onClick={chooseHints}
+                                >
+                                  <span className="flex items-center gap-2 font-semibold">
+                                    <HandHelping size={16} />
+                                    Give me a hint
+                                  </span>
+                                  <span className="text-xs font-normal opacity-80">Step by step, so you find the fix yourself</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-outline btn-primary h-auto flex-col items-start gap-1 py-3 text-left"
+                                  onClick={chooseAnswer}
+                                >
+                                  <span className="flex items-center gap-2 font-semibold">
+                                    <Lightbulb size={16} />
+                                    Show me the answer
+                                  </span>
+                                  <span className="text-xs font-normal opacity-80">Explains the error and the fix straight away</span>
+                                </button>
+                              </div>
+                            </div>
                           )}
 
-                          {result?.error && isSocratic && !answeredThisRun && !isHintLoading && !isLoading && (
-                            <button className="btn btn-outline btn-primary pointer-events-auto self-start" onClick={handleGetAnswer}>
-                              <Lightbulb size={16} />
-                              Explain this error
-                            </button>
+                          {/* Later runs carry on with the last choice in one click, as the
+                              old toggle did. A new run is when switching is allowed, so the
+                              other mode sits beside it as a button too, with the last
+                              choice first and filled in. */}
+                          {result?.error && !helpChosen && !isHintLoading && !isLoading && hasChosenMode && (
+                            <div className="flex flex-wrap gap-2">
+                              {isSocratic ? (
+                                <>
+                                  {answerChoiceButton(true)}
+                                  {hintChoiceButton(false)}
+                                </>
+                              ) : (
+                                <>
+                                  {hintChoiceButton(true)}
+                                  {answerChoiceButton(false)}
+                                </>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Shown locked rather than hidden, so the student can see the
+                              answer exists and how to get to it. */}
+                          {result?.error && hintsInProgress && !isHintLoading && !isLoading && (
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-base-content/60">
+                              <button type="button" className="btn btn-sm btn-outline" disabled>
+                                <Lock size={14} />
+                                Show me the answer
+                              </button>
+                              <span>Run your code again to switch to the answer.</span>
+                            </div>
                           )}
 
                           {isHintLoading && <p className="text-sm opacity-70">Thinking...</p>}
@@ -894,8 +1007,8 @@ function App() {
                             type="text"
                             className="input input-md flex-1 bg-base-100 font-medium focus:outline-none focus:border-primary"
                             placeholder={
-                              isSocratic
-                                ? 'Switch to Hints to reply to the assistant.'
+                              answeredThisRun
+                                ? 'Run your code again to get hints.'
                                 : isFinalStage
                                   ? 'You have reached the last hint.'
                                   : 'Reply to the assistant...'

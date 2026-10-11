@@ -10,14 +10,12 @@ const API_URL = import.meta.env.VITE_API_URL ?? '';
 // Runs the student's code in the sandbox and returns the output or error.
 export async function executeCode(
   code: string,
-  expectedBehaviour: string,
   course?: string,
   language?: string,
   sessionId?: string,
 ): Promise<ExecutionResponse> {
   const response = await axios.post<ExecutionResponse>(`${API_URL}/api/execute`, {
     code,
-    expected_behaviour: expectedBehaviour,
     course,
     language,
     session_id: sessionId,

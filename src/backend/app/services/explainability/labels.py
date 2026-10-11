@@ -26,12 +26,6 @@ FEATURE_LABELS = {
 }
 
 
-# Yes/no features whose label states the thing is present. SHAP can credit
-# one of these when it is absent (absence differs from the average program),
-# and showing the label then would tell the student something false.
-PRESENCE_FEATURES = ("has_subscript", "has_division", "mutates_during_iteration", "parse_failed")
-
-
 def readable(feature: str) -> str:
     """Plain-English label for a feature, or an empty string if there is none.
 
