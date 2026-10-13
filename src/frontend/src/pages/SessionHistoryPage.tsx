@@ -4,8 +4,8 @@
  * new one for a course and language.
  */
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Bug, ChevronDown, ChevronUp, CircleHelp, FileText, LogOut, Trash2, User } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowRight, Bug, ChevronDown, ChevronUp, CircleHelp, FileText, LogOut, Moon, Sun, Trash2, User } from 'lucide-react';
 import { deleteStudentData, listStudentSessions } from '../api';
 import { useAuth } from '../auth/useAuth';
 import { courses, findCourse, languages } from '../session/courses';
@@ -14,6 +14,14 @@ import { useStudentSession } from '../session/useStudentSession';
 import type { StudentSessionSummary } from '../types';
 
 const appLogo = '/error-guide-logo.png';
+const themeStorageKey = 'debugging-assistant.theme';
+type Theme = 'light' | 'dark';
+
+const getInitialTheme = (): Theme => {
+  const savedTheme = localStorage.getItem(themeStorageKey);
+  if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+};
 
 type SortOrder = 'newest' | 'oldest';
 
@@ -29,6 +37,7 @@ export default function SessionHistoryPage() {
   const navigate = useNavigate();
   const { session: login, signOut } = useAuth();
   const { session: activeSession, startSession, resumeSession, endSession } = useStudentSession();
+  const [theme, setTheme] = useState<Theme>(getInitialTheme);
 
   const [sessions, setSessions] = useState<StudentSessionSummary[] | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -39,6 +48,11 @@ export default function SessionHistoryPage() {
   const [confirming, setConfirming] = useState<StudentSessionSummary | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem(themeStorageKey, theme);
+  }, [theme]);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,19 +121,19 @@ export default function SessionHistoryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-base-100 p-3 text-base-content sm:p-5">
-      <header className="navbar mb-2 gap-4 px-0">
-        <div className="flex flex-1 items-center gap-3">
-          <img src={appLogo} alt="Error Guide logo" className="h-14 w-14 shrink-0 rounded-box object-contain" />
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-base-100 p-3 text-base-content sm:p-5">
+      <header className="navbar sticky top-0 z-10 mb-4 w-full shrink-0 flex-row items-start gap-4 bg-base-100 px-0 lg:items-center">
+        <div className="flex flex-1 items-center gap-3 pl-1 sm:pl-2">
+          <img src={appLogo} alt="Error Guide logo" className="h-16 w-16 shrink-0 rounded-box object-contain sm:h-[88px] sm:w-[88px]" />
           <div className="min-w-0">
-            <h1 className="font-mono text-xl font-semibold tracking-wider text-primary sm:text-2xl">ERROR GUIDE</h1>
-            <p className="text-sm">Student View | Session History</p>
+            <h1 className="font-mono text-xl font-semibold leading-tight tracking-wide text-primary sm:text-2xl sm:tracking-wider lg:text-3xl">ERROR GUIDE</h1>
+            <p className="mt-1">Student View | Session History</p>
           </div>
         </div>
 
         {/* Short explanation of the page. */}
-        <div className="dropdown dropdown-end">
-          <button type="button" tabIndex={0} className="btn btn-circle btn-ghost" aria-label="Help">
+        <div className="dropdown dropdown-end -translate-x-1 sm:-translate-x-2">
+          <button type="button" tabIndex={0} className="btn btn-circle btn-ghost h-15 w-15 self-start lg:self-auto" aria-label="Help">
             <CircleHelp size={26} />
           </button>
           <div tabIndex={0} className="dropdown-content z-20 mt-3 w-72 rounded-xl border border-base-300 bg-base-100 p-4 text-sm shadow-xl">
@@ -130,14 +144,30 @@ export default function SessionHistoryPage() {
         </div>
 
         {/* Profile menu: account and log out. */}
-        <div className="dropdown dropdown-end">
-          <button type="button" tabIndex={0} className="btn btn-circle btn-primary h-12 w-12" aria-label="Open profile menu">
-            <User size={24} />
+        <div className="dropdown dropdown-end self-start -translate-x-1 sm:-translate-x-2 lg:self-auto">
+          <button type="button" tabIndex={0} className="btn btn-circle btn-primary h-15 w-15" aria-label="Open profile menu">
+            <User size={30} />
           </button>
           <div tabIndex={0} className="dropdown-content z-20 mt-3 w-64 rounded-xl border border-base-300 bg-base-100 p-4 shadow-xl">
             <div className="mb-3 border-b border-base-300 pb-3">
               <div className="font-semibold">Student</div>
               <div className="truncate text-sm text-base-content/60">{login?.user.email ?? 'Student account'}</div>
+            </div>
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <div className="font-medium">Theme</div>
+                <div className="text-sm text-base-content/60">
+                  {theme === 'dark' ? 'Dark mode' : 'Light mode'}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-circle btn-outline"
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+              >
+                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
             </div>
             <button type="button" className="btn btn-outline btn-error w-full" onClick={handleLogout}>
               <LogOut size={16} />
@@ -147,22 +177,16 @@ export default function SessionHistoryPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl">
-        {activeSession && (
-          <Link to="/student" className="mb-3 inline-flex items-center gap-2 text-sm text-base-content/70 hover:text-base-content">
-            <ArrowLeft size={16} />
-            Back to debugger
-          </Link>
-        )}
+      <main className="flex min-h-0 w-full min-w-0 flex-1 flex-col px-1 sm:px-2">
+        <div className="shrink-0">
+          <h2 className="text-2xl font-bold">Your debugging sessions</h2>
+          <p className="mt-1 text-sm text-base-content/70">View and continue your past debugging sessions, or start a new one.</p>
 
-        <h2 className="text-2xl font-bold">Your debugging sessions</h2>
-        <p className="mt-1 text-sm text-base-content/70">View and continue your past debugging sessions, or start a new one.</p>
-
-        {/* Start a new session. */}
-        <form
-          onSubmit={handleStart}
-          className="mt-4 grid gap-4 rounded-box border border-base-300 bg-base-200 p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
-        >
+          {/* Start a new session. */}
+          <form
+            onSubmit={handleStart}
+            className="mt-4 grid gap-4 rounded-box border border-base-300 bg-base-200 p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+          >
           <label className="flex flex-col gap-1">
             <span className="text-sm">Course</span>
             <select
@@ -202,10 +226,11 @@ export default function SessionHistoryPage() {
           <button type="submit" className="btn btn-primary sm:min-w-44" disabled={!course}>
             Start session
           </button>
-        </form>
+          </form>
+        </div>
 
         {/* Saved sessions. */}
-        <div className="mt-6">
+        <div className="mt-6 min-h-0 flex-1 overflow-y-auto">
           {sessions === null && !loadError && (
             <p className="flex items-center gap-2 py-8 text-sm text-base-content/70">
               <span className="loading loading-spinner loading-sm"></span>
@@ -213,27 +238,15 @@ export default function SessionHistoryPage() {
             </p>
           )}
 
-          {loadError && (
-            <p className="py-8 text-sm text-error">
-              Could not load your sessions. Check you are logged in, then refresh the page.
-            </p>
-          )}
-
-          {sessions !== null && sessions.length === 0 && (
-            <p className="py-8 text-sm text-base-content/70">
-              No sessions yet. Choose a course above to start your first one.
-            </p>
-          )}
-
-          {sortedSessions.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="table">
+          {(sessions !== null || loadError) && (
+            <div className="w-full min-w-0">
+              <table className="table w-full">
                 <thead>
                   <tr className="text-base-content">
-                    <th>Session / Error</th>
-                    <th className="hidden sm:table-cell">Course</th>
-                    <th className="hidden sm:table-cell">Language</th>
-                    <th aria-sort={sortOrder === 'newest' ? 'descending' : 'ascending'}>
+                    <th className="sticky top-0 z-10 bg-base-100">Session / Error</th>
+                    <th className="sticky top-0 z-10 bg-base-100 hidden sm:table-cell">Course</th>
+                    <th className="sticky top-0 z-10 bg-base-100 hidden sm:table-cell">Language</th>
+                    <th className="sticky top-0 z-10 bg-base-100" aria-sort={sortOrder === 'newest' ? 'descending' : 'ascending'}>
                       <button
                         type="button"
                         className="inline-flex items-center gap-1"
@@ -244,11 +257,17 @@ export default function SessionHistoryPage() {
                         {sortOrder === 'newest' ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                       </button>
                     </th>
-                    <th><span className="sr-only">Actions</span></th>
+                    <th className="sticky top-0 z-10 bg-base-100"><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedSessions.map((saved) => (
+                  {sortedSessions.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-sm text-base-content/70">
+                        No data available.
+                      </td>
+                    </tr>
+                  ) : sortedSessions.map((saved) => (
                     // Clicking anywhere on the row continues the session. The Continue
                     // button stays for keyboard and screen reader users.
                     <tr

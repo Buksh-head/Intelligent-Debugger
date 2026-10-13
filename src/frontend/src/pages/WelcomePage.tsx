@@ -46,7 +46,7 @@ export default function WelcomePage() {
       title: 'Learn to debug with confidence.',
       description: 'Work through your own code with staged hints, clear explanations, and small experiments that build lasting debugging skills.',
       features: ['Progressive hints', 'Better feedback'],
-      welcome: 'Start a debugging session',
+      welcome: 'Student Access',
       prompt: studentMode === 'login' ? 'Sign in to start debugging.' : 'Register to start debugging.',
     }
     : {
@@ -54,7 +54,7 @@ export default function WelcomePage() {
       title: 'See where students get stuck.',
       description: 'Review anonymous cohort patterns, recurring errors, and common misconceptions to support more targeted teaching.',
       features: ['Cohort insights', 'Targeted teaching insights'],
-      welcome: 'Instructor access',
+      welcome: 'Instructor Access',
       prompt: instructorMode === 'login' ? 'Sign in to view your cohort dashboard.' : 'Register to view your cohort dashboard.',
     };
 
@@ -225,7 +225,7 @@ export default function WelcomePage() {
               {/* Students and instructors both sign in with an email and password. */}
               <label className="form-control w-full gap-2">
                 <span className="label-text block pb-2 text-sm font-medium">
-                  {role === 'instructor' ? 'Instructor email' : 'Email'}
+                  Email
                 </span>
                 <input
                   type="email"
@@ -245,7 +245,7 @@ export default function WelcomePage() {
               </label>
 
               <label className="form-control w-full gap-2">
-                <span className="label-text block pb-2 text-sm font-medium">{isRegister ? 'Create password' : 'Password'}</span>
+                <span className="label-text block pb-2 text-sm font-medium">Password</span>
                 <input
                   type="password"
                   className="input input-bordered h-12 w-full bg-base-100 text-base-content border-base-300"
@@ -287,7 +287,7 @@ export default function WelcomePage() {
                     ? (isRegister ? 'Creating account...' : 'Signing in...')
                     : isRegister
                       ? (role === 'student' ? 'Create student account' : 'Create instructor account')
-                      : role === 'student' ? 'Sign in as student' : 'Continue as instructor'}
+                      : role === 'student' ? 'Sign in as Student' : 'Sign in as Instructor'}
                 </button>
               </div>
             </form>

@@ -17,11 +17,13 @@ import { useStudentSession } from './session/useStudentSession';
 import { loadOrRegisterSession, restoreSession, toRecords } from './session/savedSession';
 import type { ChatMessage, ExecutionResponse, FeedbackMode, Finding, HintStage } from './types';
 import WhyThisHint from './components/WhyThisHint';
-import { getTourSample, hasSeenTour, startStudentTour, tourRunStep } from './tour/studentTour';
+import { getTourSample, startStudentTour, tourRunStep } from './tour/studentTour';
+import { hasSeenTour } from './tour/tourStatus';
 import type { Driver } from 'driver.js';
-import { appendChatMessages, deleteStudentData, executeCode, getHint, saveSessionState } from './api';
+import { appendChatMessages, executeCode, getHint, saveSessionState } from './api';
 
 import {
+  ArrowLeft,
   LogOut,
   Upload,
   Play,
@@ -40,7 +42,6 @@ import {
   UserRound,
   BookOpen,
   ExternalLink,
-  Trash2,
   Lightbulb,
   Lock,
   CircleHelp,
@@ -140,11 +141,6 @@ function App() {
   const [currentStage, setCurrentStage] = useState<number | null>(null);
   const [hintError, setHintError] = useState<string | null>(null);
 
-  // Deleting this session's data
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
   // Hints or Answer mode
   const [feedbackMode, setFeedbackMode] = useState<FeedbackMode>('hints');
   // Whether the student has picked a mode yet this session. Until then both
@@ -154,7 +150,7 @@ function App() {
 
   const navigate = useNavigate();
   const location = useLocation();
-  const { signOut } = useAuth();
+  const { signOut, session: authSession } = useAuth();
   const { session: studentSession, endSession } = useStudentSession();
   const sessionId = studentSession?.id ?? null;
 
@@ -191,9 +187,6 @@ function App() {
     setInput('');
     setCurrentStage(null);
     setHintError(null);
-    setConfirmingDelete(false);
-    setIsDeleting(false);
-    setDeleteError(null);
     setFeedbackMode('hints');
     setHasChosenMode(false);
     setSplit(getSavedSplit(sessionId));
@@ -459,7 +452,7 @@ function App() {
       setResult(response);
       // Keep the code and result so the session can be continued from here.
       if (isSynced && requestSessionId) {
-        saveSessionState(requestSessionId, code, response).catch(() => {});
+        saveSessionState(requestSessionId, code, response).catch(() => { });
       }
       // Mark where the new feedback starts so it reads as a continuation of
       // the conversation rather than a replacement.
@@ -497,17 +490,20 @@ function App() {
       },
     });
   };
-  // Start the tour by itself the first time this browser opens the Student View.
+
+  // Start the tour by itself the first time a student account opens the
+  // Student View. It waits until the saved session has loaded, so the editor
+  // already shows any saved code when the tour picks demo or describe-only.
   // The ref stops it starting twice when React runs effects twice in development.
   const autoTourStartedRef = useRef(false);
   useEffect(() => {
-    if (location.pathname !== '/student' || !sessionId) return;
-    if (autoTourStartedRef.current || hasSeenTour()) return;
+    if (location.pathname !== '/student' || !isSynced) return;
+    if (autoTourStartedRef.current || hasSeenTour(authSession, 'student')) return;
     autoTourStartedRef.current = true;
     startTour();
-    // Only re-checked when the page or session changes, not on every edit.
+    // Only re-checked when the page, login or loaded session changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, sessionId]);
+  }, [location.pathname, isSynced, authSession]);
 
   // Builds the Finding the hints endpoint expects from the current execution result.
   const buildFinding = (execution: ExecutionResponse): Finding => ({
@@ -654,23 +650,6 @@ function App() {
     navigate('/');
   };
 
-  // Deletes everything stored for this session, then ends it, so later runs
-  // aren't saved under the ID that was just cleared. The student stays
-  // logged in and goes back to their other sessions.
-  const handleDeleteData = async () => {
-    if (!sessionId) return;
-    setIsDeleting(true);
-    setDeleteError(null);
-    try {
-      await deleteStudentData(sessionId);
-      endSession();
-      navigate('/student/sessions');
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : 'Could not delete your data. Try again.');
-      setIsDeleting(false);
-    }
-  };
-
   return (
     <Routes>
       <Route
@@ -679,7 +658,7 @@ function App() {
           <>
             <div className="student-debugger flex min-h-screen flex-col p-3 sm:p-5 xl:h-screen xl:min-h-[720px]">
               {/* Header: logo, title and profile menu */}
-              <header className="navbar mb-4 flex-row items-start gap-4 lg:items-center">
+              <header className="navbar flex-row items-start gap-4 lg:items-center">
                 <div className="flex flex-1 items-center gap-3">
                   <img
                     src={appLogo}
@@ -704,7 +683,7 @@ function App() {
                 >
                   <CircleHelp size={28} />
                 </button>
-                {/* Profile menu: theme, delete data, saved sessions, log out */}
+                {/* Profile menu: theme and log out */}
                 <div className="dropdown dropdown-end self-start lg:self-auto">
                   <button
                     type="button"
@@ -747,50 +726,6 @@ function App() {
                       </button>
                     </div>
 
-                    {confirmingDelete ? (
-                      <div className="mb-3 rounded-lg border border-error/40 p-3">
-                        <p className="mb-2 text-sm">
-                          Delete this session's code, errors, hints and chat? This can't be undone.
-                        </p>
-                        {deleteError && <p className="mb-2 text-xs text-error">{deleteError}</p>}
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            className="btn btn-sm flex-1"
-                            onClick={() => {
-                              menuRef.current?.focus();
-                              setConfirmingDelete(false);
-                              setDeleteError(null);
-                            }}
-                            disabled={isDeleting}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-error flex-1"
-                            onClick={handleDeleteData}
-                            disabled={isDeleting}
-                          >
-                            {isDeleting ? <span className="loading loading-spinner loading-xs"></span> : 'Delete'}
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm mb-3 w-full"
-                        onClick={() => {
-                          menuRef.current?.focus();
-                          setConfirmingDelete(true);
-                        }}
-                        disabled={!sessionId || isLoading || isHintLoading}
-                      >
-                        <Trash2 size={16} />
-                        Delete my data
-                      </button>
-                    )}
-                    {/* Saved sessions, to continue another or start a new one. */}
                     <button
                       type="button"
                       className="btn btn-outline btn-sm mb-3 w-full"
@@ -810,6 +745,14 @@ function App() {
                   </div>
                 </div>
               </header>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm mb-2 ml-1 self-start sm:ml-2"
+                onClick={() => navigate('/student/sessions')}
+              >
+                <ArrowLeft size={16} />
+                Back to Sessions
+              </button>
 
               <main
                 ref={mainRef}

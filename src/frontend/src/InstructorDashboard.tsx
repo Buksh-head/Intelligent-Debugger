@@ -3,10 +3,13 @@
  * filtered by course and date range. Clicking an error type opens a
  * detail view with a chart, outcomes and an AI-generated summary.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getCohortAnalytics } from './api'
 import type { AnalyticsConcept, AnalyticsDateRange, AnalyticsResponse } from './types'
-import { ArrowLeft, ArrowRight, ChevronDown, LogOut, Sun, Moon, User } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ChevronDown, CircleHelp, LogOut, Sun, Moon, User } from 'lucide-react'
+import { useAuth } from './auth/useAuth'
+import { startInstructorTour } from './tour/instructorTour'
+import { hasSeenTour } from './tour/tourStatus'
 const appLogo = '/error-guide-logo.png'
 type InstructorDashboardProps = {
   onBack: () => void
@@ -55,6 +58,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
   const [insight, setInsight] = useState<InsightsResponse | null>(null)
   const [insightLoading, setInsightLoading] = useState(false)
   const [insightError, setInsightError] = useState<string | null>(null)
+  const { session } = useAuth()
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -93,6 +97,20 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
       note: 'No records were found for this error type in the selected date range.',
     }
   }, [analytics, selectedConcept])
+
+  // Starts the tour for whichever view is showing.
+  const startTour = () => startInstructorTour(activeConcept ? 'detail' : 'overview')
+
+  // Start the overview tour by itself the first time an instructor account
+  // opens the dashboard, once the stats have loaded so every part is on screen.
+  // The ref stops it starting twice when React runs effects twice in development.
+  const autoTourStartedRef = useRef(false)
+  useEffect(() => {
+    if (!analytics || activeConcept || autoTourStartedRef.current) return
+    if (hasSeenTour(session, 'instructor')) return
+    autoTourStartedRef.current = true
+    startInstructorTour('overview')
+  }, [analytics, activeConcept, session])
 
   // Get the AI summary for the selected error type.
   useEffect(() => {
@@ -145,10 +163,10 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
   const concepts: AnalyticsConcept[] = analytics?.concepts ?? []
   const overviewStats = analytics
     ? [
-        { label: 'Analysed sessions', value: String(analytics.analysed_sessions) },
-        { label: 'Detected errors', value: String(analytics.detected_errors) },
-        { label: 'Most common concept', value: analytics.concepts[0]?.name ?? 'None recorded' },
-      ]
+      { label: 'Analysed sessions', value: String(analytics.analysed_sessions) },
+      { label: 'Detected errors', value: String(analytics.detected_errors) },
+      { label: 'Most common concept', value: analytics.concepts[0]?.name ?? 'None recorded' },
+    ]
     : []
 
   // Bar chart sizing, in SVG units. Only every few labels are shown so
@@ -177,71 +195,83 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
             <p className="mt-1">Instructor View</p>
           </div>
         </div>
-        <div className="dropdown dropdown-end">
+        {/* Replays the dashboard tour for the view that's showing. */}
         <button
           type="button"
-          tabIndex={0}
-          className="btn btn-circle btn-primary h-15 w-15"
-          aria-label="Open profile menu"
+          data-tour="help"
+          className="btn btn-circle btn-ghost mr-2 h-15 w-15"
+          onClick={startTour}
+          disabled={!analytics}
+          aria-label="Show the dashboard tour"
+          title="Show the dashboard tour"
         >
-          <User size={30} />
+          <CircleHelp size={28} />
         </button>
-
-        <div
-          tabIndex={0}
-          className="dropdown-content z-20 mt-3 w-64 rounded-xl border border-base-300 bg-base-100 p-4 shadow-xl"
-        >
-
-          {/* Profile summary is shown inside the account dropdown. */}
-          <div className="mb-4 flex items-center gap-3 border-b border-base-300 pb-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-content">
-              <User size={24} />
-            </div>
-
-            <div>
-              <div className="font-semibold">
-                Instructor
-              </div>
-              <div className="text-sm text-base-content/60">
-                Dashboard account
-              </div>
-            </div>
-          </div>
-
-
-          {/* The theme button switches between the saved light and dark themes. */}
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <div className="font-medium">
-                Theme
-              </div>
-              <div className="text-sm text-base-content/60">
-                {theme === 'dark' ? 'Dark mode' : 'Light mode'}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className="btn btn-sm btn-circle btn-outline"
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            >
-              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
-          </div>
-
-
-          {/* Logging out uses the parent callback to leave the protected dashboard. */}
+        <div className="dropdown dropdown-end">
           <button
             type="button"
-            className="btn btn-error w-full"
-            onClick={onBack}
+            tabIndex={0}
+            className="btn btn-circle btn-primary h-15 w-15"
+            aria-label="Open profile menu"
           >
-            <LogOut size={16} />
-            Log out
+            <User size={30} />
           </button>
 
+          <div
+            tabIndex={0}
+            className="dropdown-content z-20 mt-3 w-64 rounded-xl border border-base-300 bg-base-100 p-4 shadow-xl"
+          >
+
+            {/* Profile summary is shown inside the account dropdown. */}
+            <div className="mb-4 flex items-center gap-3 border-b border-base-300 pb-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-content">
+                <User size={24} />
+              </div>
+
+              <div>
+                <div className="font-semibold">
+                  Instructor
+                </div>
+                <div className="text-sm text-base-content/60">
+                  Dashboard account
+                </div>
+              </div>
+            </div>
+
+
+            {/* The theme button switches between the saved light and dark themes. */}
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <div className="font-medium">
+                  Theme
+                </div>
+                <div className="text-sm text-base-content/60">
+                  {theme === 'dark' ? 'Dark mode' : 'Light mode'}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-sm btn-circle btn-outline"
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              >
+                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+            </div>
+
+
+            {/* Logging out uses the parent callback to leave the protected dashboard. */}
+            <button
+              type="button"
+              className="btn btn-error w-full"
+              onClick={onBack}
+            >
+              <LogOut size={16} />
+              Log out
+            </button>
+
+          </div>
         </div>
-      </div>
       </header>
       <div className="flex min-h-0">
         <main className="flex-1 bg-base-100 px-0 py-[18px] min-[981px]:pb-4 min-[981px]:pt-0">
@@ -259,7 +289,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                   <h1 className="text-[clamp(2rem,2.4vw,3rem)] font-bold leading-tight tracking-tight">{activeConcept.title}</h1>
                   <p className="mt-2 text-base text-base-content/65">{activeConcept.description}</p>
                 </div>
-                <div className="flex flex-wrap items-end gap-3.5 min-[981px]:col-start-1 min-[981px]:row-start-1 min-[981px]:pt-[22px]">
+                <div data-tour="back" className="flex flex-wrap items-end gap-3.5 min-[981px]:col-start-1 min-[981px]:row-start-1 min-[981px]:pt-[22px]">
                   {/* Clear the URL selection and return to the overview list. */}
                   <button type="button" className="btn btn-outline" onClick={() => {
                     window.history.replaceState(null, '', window.location.pathname)
@@ -270,19 +300,19 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                   </button>
                 </div>
 
-                <div className="flex min-w-[140px] flex-col gap-1.5 min-[981px]:col-start-3 min-[981px]:row-start-1 min-[981px]:justify-self-end">
-                    <label className="text-xs text-base-content/70">Date range</label>
-                    <select className="select select-bordered h-12 w-full bg-base-100 text-base-content" value={dateRange} onChange={(event) => setDateRange(event.target.value as AnalyticsDateRange)}>
-                      <option value="today">Today</option>
-                      <option value="last_7_days">Last 7 days</option>
-                      <option value="last_month">Last month</option>
-                      <option value="semester_2_2026">2026 Sem 2</option>
-                    </select>
+                <div data-tour="detail-dates" className="flex min-w-[140px] flex-col gap-1.5 min-[981px]:col-start-3 min-[981px]:row-start-1 min-[981px]:justify-self-end">
+                  <label className="text-xs text-base-content/70">Date range</label>
+                  <select className="select select-bordered h-12 w-full bg-base-100 text-base-content" value={dateRange} onChange={(event) => setDateRange(event.target.value as AnalyticsDateRange)}>
+                    <option value="today">Today</option>
+                    <option value="last_7_days">Last 7 days</option>
+                    <option value="last_month">Last month</option>
+                    <option value="semester_2_2026">2026 Sem 2</option>
+                  </select>
                 </div>
               </div>
               {/* The chart displays how often this error type occurred over time. */}
               <div className="grid gap-[18px] min-[981px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-                <div className="min-h-[400px] rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
+                <div data-tour="chart" className="min-h-[400px] rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
                   <div className="mb-1.5 text-[1.05rem] font-semibold">Error frequency over time</div>
                   {chartPoints.length === 0 ? (
                     <p className="mt-4 text-sm text-base-content/60">No records found</p>
@@ -312,7 +342,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                     })}
                   </svg>}
                 </div>
-                <div className="min-h-[260px] rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
+                <div data-tour="grouped" className="min-h-[260px] rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
                   <div className="mb-1.5 text-[1.05rem] font-semibold">Errors grouped under this type</div>
                   <ul className="mt-3.5 max-h-[260px] overflow-y-auto pr-2 list-none p-0">
                     {activeConcept.grouped_errors.length === 0 ? <li className="py-2.5 text-sm text-base-content/60">No records found</li> : activeConcept.grouped_errors.map((item) => (
@@ -326,7 +356,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
               </div>
               <div className="mt-[18px] grid gap-[18px] min-[981px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
                 {/* This panel displays the optional AI-generated explanation. */}
-                <div className="rounded-xl border border-primary/30 bg-base-200 p-5 pb-[18px]">
+                <div data-tour="insight" className="rounded-xl border border-primary/30 bg-base-200 p-5 pb-[18px]">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="mb-1.5 text-[1.05rem] font-semibold">Instructor insight</div>
@@ -355,7 +385,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                 </div>
 
                 {/* These bars show whether sessions ended resolved, attempted, or untried. */}
-                <div className="flex h-full flex-col rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
+                <div data-tour="outcomes" className="flex h-full flex-col rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
                   <div className="mb-1.5 text-[1.05rem] font-semibold">Debugging assistance outcomes</div>
                   <p className="m-0 text-xs text-base-content/60">Outcome of the final recorded submission in each assistance session</p>
                   <div className="mt-[18px] flex h-7 overflow-hidden rounded-lg border border-base-300 bg-base-100">
@@ -387,11 +417,11 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
               {/* The overview provides filters, headline statistics, and selectable error types. */}
               <div className="mb-[22px] grid gap-4 min-[981px]:flex min-[981px]:items-start min-[981px]:justify-between min-[981px]:gap-5">
                 <div className="flex-1">
-                <h1 className="text-[clamp(2rem,2.4vw,3rem)] font-bold leading-tight tracking-tight">
-                  {course ? `${course} cohort error overview` : 'All Cohort error overview'}
-                </h1>
+                  <h1 className="text-[clamp(2rem,2.4vw,3rem)] font-bold leading-tight tracking-tight">
+                    {course ? `${course} cohort error overview` : 'All Cohort error overview'}
+                  </h1>
                 </div>
-                <div className="flex flex-wrap items-end gap-3.5">
+                <div data-tour="filters" className="flex flex-wrap items-end gap-3.5">
                   {/* Changing either filter reloads the cohort data through the effect above. */}
                   <div className="flex min-w-[140px] flex-col gap-1.5">
                     <label className="text-xs text-base-content/70">Class</label>
@@ -411,7 +441,7 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                   </div>
                 </div>
               </div>
-              <div className="mb-5 grid gap-[18px] min-[981px]:grid-cols-3">
+              <div data-tour="stats" className="mb-5 grid gap-[18px] min-[981px]:grid-cols-3">
                 {overviewStats.map((stat) => (
                   <div key={stat.label} className="flex min-h-[110px] flex-col justify-center rounded-xl border border-base-300 bg-base-200 px-5 py-[18px]">
                     <div className="mb-2 text-sm text-base-content/70">{stat.label}</div>
@@ -420,54 +450,54 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
                 ))}
               </div>
               <div className="grid gap-5 lg:grid-cols-[3fr_2fr]">
-              <div className="flex h-[calc(100vh-420px)] min-h-[400px] flex-col rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
-                <div>
+                <div data-tour="error-types" className="flex h-[calc(100vh-420px)] min-h-[400px] flex-col rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
                   <div>
-                    <div className="mb-1.5 text-[1.05rem] font-semibold">Most common error types</div>
+                    <div>
+                      <div className="mb-1.5 text-[1.05rem] font-semibold">Most common error types</div>
+                    </div>
+                  </div>
+                  <div className="mt-4 h-full overflow-y-auto space-y-1.5 pr-2">
+                    {/* Each error type updates the URL and opens its detail view. */}
+                    {concepts.length === 0 ? <p className="py-2.5 text-sm text-base-content/60">No records found</p> : concepts.map((concept) => (
+                      <button
+                        key={concept.name}
+                        type="button"
+                        className="grid w-full cursor-pointer grid-cols-[minmax(110px,180px)_minmax(0,1fr)_78px_112px] items-center gap-3 rounded-lg border border-base-300 bg-base-100 px-3 py-2.5 text-left text-inherit transition hover:border-primary/50 hover:bg-base-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        aria-label={`View details for ${concept.name}`}
+                        onClick={() => {
+                          const params = new URLSearchParams(window.location.search)
+                          params.set('concept', concept.name)
+                          window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`)
+                          setSelectedConcept(concept.name)
+                        }}
+                      >
+                        <span className="font-medium text-base-content/90">{concept.name}</span>
+                        <span className="h-3 w-full overflow-hidden rounded-full border border-base-300 bg-base-200">
+                          <span className="block h-full rounded-full bg-primary/80" style={{ width: `${concept.percent}%` }} />
+                        </span>
+                        <span className="w-full whitespace-nowrap text-right text-xs text-base-content/70">{concept.count} • {concept.percent}%</span>
+                        <span className="flex w-full items-center justify-end gap-1 whitespace-nowrap text-right text-base font-medium text-primary">See details <ArrowRight size={16} aria-hidden="true" /></span>
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <div className="mt-4 h-full overflow-y-auto space-y-1.5 pr-2">
-                  {/* Each error type updates the URL and opens its detail view. */}
-                  {concepts.length === 0 ? <p className="py-2.5 text-sm text-base-content/60">No records found</p> : concepts.map((concept) => (
-                    <button
-                      key={concept.name}
-                      type="button"
-                      className="grid w-full cursor-pointer grid-cols-[minmax(110px,180px)_minmax(0,1fr)_78px_112px] items-center gap-3 rounded-lg border border-base-300 bg-base-100 px-3 py-2.5 text-left text-inherit transition hover:border-primary/50 hover:bg-base-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                      aria-label={`View details for ${concept.name}`}
-                      onClick={() => {
-                        const params = new URLSearchParams(window.location.search)
-                        params.set('concept', concept.name)
-                        window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`)
-                        setSelectedConcept(concept.name)
-                      }}
-                    >
-                      <span className="font-medium text-base-content/90">{concept.name}</span>
-                      <span className="h-3 w-full overflow-hidden rounded-full border border-base-300 bg-base-200">
-                        <span className="block h-full rounded-full bg-primary/80" style={{ width: `${concept.percent}%` }} />
-                      </span>
-                      <span className="w-full whitespace-nowrap text-right text-xs text-base-content/70">{concept.count} • {concept.percent}%</span>
-                      <span className="flex w-full items-center justify-end gap-1 whitespace-nowrap text-right text-base font-medium text-primary">See details <ArrowRight size={16} aria-hidden="true" /></span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-              <div className="flex h-[calc(100vh-420px)] min-h-[400px] flex-col rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
-                <div className="mb-1.5 text-[1.05rem] font-semibold">
-                  Recurring raw errors
-                </div>
+                <div>
+                  <div data-tour="raw-errors" className="flex h-[calc(100vh-420px)] min-h-[400px] flex-col rounded-xl border border-base-300 bg-base-200 p-5 pb-[18px]">
+                    <div className="mb-1.5 text-[1.05rem] font-semibold">
+                      Recurring raw errors
+                    </div>
 
-                <ul className="mt-3.5 min-h-0 flex-1 overflow-y-auto pr-2 list-none p-0">
-                    {/* This list shows the most frequent raw error messages in the filtered data. */}
-                    {analytics.recurring_errors.length === 0 ? <li className="py-2.5 text-sm text-base-content/60">No records found</li> : analytics.recurring_errors.map((item) => (
-                      <li key={item.label} className="flex items-center justify-between gap-4 border-b border-base-300 py-2.5 text-base-content/80 last:border-b-0">
-                        <span>{item.label}</span>
-                        <strong>{item.count}</strong>
-                      </li>
-                    ))}
-                  </ul>
+                    <ul className="mt-3.5 min-h-0 flex-1 overflow-y-auto pr-2 list-none p-0">
+                      {/* This list shows the most frequent raw error messages in the filtered data. */}
+                      {analytics.recurring_errors.length === 0 ? <li className="py-2.5 text-sm text-base-content/60">No records found</li> : analytics.recurring_errors.map((item) => (
+                        <li key={item.label} className="flex items-center justify-between gap-4 border-b border-base-300 py-2.5 text-base-content/80 last:border-b-0">
+                          <span>{item.label}</span>
+                          <strong>{item.count}</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
-              </div>
               </div>
             </>
           )}

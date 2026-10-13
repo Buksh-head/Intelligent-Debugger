@@ -6,6 +6,7 @@
 import { driver, type Driver, type DriveStep } from 'driver.js';
 import 'driver.js/dist/driver.css';
 import type { ExecutionResponse } from '../types';
+import { saveTourStatus } from './tourStatus';
 
 type TourOptions = {
   languageLabel: string;    // e.g. "Python"
@@ -238,33 +239,12 @@ const buildSteps = (options: TourOptions, tour: Driver): DriveStep[] => {
   ];
 };
 
-// Whether this browser has finished or skipped the tour, so it only starts
-// by itself the first time. Stored in the browser until student login
-// exists; then this can move to the student's account.
-const tourStatusKey = 'debugging-assistant.tour-status';
-type TourStatus = 'completed' | 'skipped';
-
-export const hasSeenTour = (): boolean => {
-  try {
-    const status = localStorage.getItem(tourStatusKey);
-    return status === 'completed' || status === 'skipped';
-  } catch {
-    return true; // storage blocked: don't start it every time
-  }
-};
-
-const saveTourStatus = (status: TourStatus) => {
-  try {
-    localStorage.setItem(tourStatusKey, status);
-  } catch {
-    // Storage blocked, the tour may start again next time.
-  }
-};
-
 // Starts the tour from the first step. Returns it so App can move it on
 // once the student has clicked Run.
 export const startStudentTour = (options: TourOptions): Driver => {
   const tour = driver({
+    // Highlighted elements can't be clicked during the tour. The demo's
+    // Run step turns this back off so the student can click Run.
     disableActiveInteraction: true,
     showProgress: true,
     progressText: '{{current}} of {{total}}',
@@ -274,8 +254,9 @@ export const startStudentTour = (options: TourOptions): Driver => {
     popoverClass: 'student-tour',
     // Runs however the tour closes: Done, the X, Escape or clicking outside.
     // Done on the last step counts as completed, anything else as skipped.
+    // Saved to the student's account so it only starts by itself once.
     onDestroyStarted: () => {
-      saveTourStatus(tour.hasNextStep() ? 'skipped' : 'completed');
+      void saveTourStatus('student', tour.hasNextStep() ? 'skipped' : 'completed');
       options.onEnd();
       tour.destroy();
     },
