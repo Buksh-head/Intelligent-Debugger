@@ -10,8 +10,8 @@ Same library (SQLModel), different job.
 """
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, SmallInteger, func
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy import Column, DateTime, ForeignKey, SmallInteger, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlmodel import Field, SQLModel
 
 
@@ -44,6 +44,43 @@ class ErrorLog(SQLModel, table=True):
     pending_resource_concept: str | None = Field(default=None)
     resource_offered: bool = Field(default=False, sa_column=Column(nullable=False, server_default="false"))
     resolved_at: datetime | None = None
+    created_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+
+
+class StudentSession(SQLModel, table=True):
+    """A debugging session owned by one student account."""
+    __tablename__ = "student_sessions"
+
+    id: str = Field(sa_column=Column(PGUUID(as_uuid=False), primary_key=True))
+    username: str
+    course: str | None = None
+    language: str | None = None
+    code: str | None = None
+    last_execution: dict | None = Field(default=None, sa_column=Column(JSONB))
+    created_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+    updated_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+
+
+class ChatMessage(SQLModel, table=True):
+    __tablename__ = "chat_messages"
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: str = Field(
+        sa_column=Column(
+            PGUUID(as_uuid=False),
+            ForeignKey("student_sessions.id", ondelete="CASCADE"),
+            nullable=False,
+        )
+    )
+    position: int
+    role: str
+    body: dict = Field(sa_column=Column(JSONB, nullable=False))
     created_at: datetime | None = Field(
         default=None, sa_column=Column(DateTime(timezone=True), server_default=func.now())
     )

@@ -69,6 +69,47 @@ export interface HintResponse {
   explanation?: Explanation | null; // only set in socratic mode
 }
 
+// One message in the Student View chat.
+export type ChatMessage = {
+  role: 'student' | 'assistant' | 'event'; // 'event' marks a resubmission within the chat
+  text: string;
+  stage?: number;
+  resourceUrl?: string | null;   // link from the curated list, if this message offers one
+  resourceLabel?: string | null; // the link's title
+  gated?: boolean;               // true while the student still owes the check answer
+  answer?: SocraticAnswer;       // set on a socratic-mode reply, rendered as diagnosis and fix
+  explanation?: Explanation | null; // how the system reached that answer
+};
+
+// A chat message as saved to the student's account. body holds every
+// ChatMessage field except role.
+export interface ChatMessageRecord {
+  position: number;
+  role: ChatMessage['role'];
+  body: Omit<ChatMessage, 'role'>;
+}
+
+// One row of the student's session history.
+export interface StudentSessionSummary {
+  id: string;
+  course: string | null;
+  language: string | null;
+  latest_error_type: string | null;
+  latest_error_message: string | null;
+  has_unresolved_error: boolean;
+  last_activity: string; // ISO timestamp
+}
+
+// A saved session, with what's needed to continue it.
+export interface StudentSessionDetail {
+  id: string;
+  course: string | null;
+  language: string | null;
+  code: string | null;
+  last_execution: ExecutionResponse | null;
+  messages: ChatMessageRecord[];
+}
+
 export interface AnalyticsError {
   label: string;
   count: number;

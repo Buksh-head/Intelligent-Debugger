@@ -1,0 +1,350 @@
+/**
+ * The student's session history. Lists every debugging session saved to
+ * their account, lets them continue one where they left off, or start a
+ * new one for a course and language.
+ */
+import { useEffect, useState, type FormEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, ArrowRight, Bug, ChevronDown, ChevronUp, CircleHelp, FileText, LogOut, Trash2, User } from 'lucide-react';
+import { deleteStudentData, listStudentSessions } from '../api';
+import { useAuth } from '../auth/useAuth';
+import { courses, findCourse, languages } from '../session/courses';
+import { timeAgo } from '../session/timeAgo';
+import { useStudentSession } from '../session/useStudentSession';
+import type { StudentSessionSummary } from '../types';
+
+const appLogo = '/error-guide-logo.png';
+
+type SortOrder = 'newest' | 'oldest';
+
+// The row title: the session's latest error, as the student saw it.
+const sessionTitle = (session: StudentSessionSummary): string => {
+  if (!session.latest_error_type) return 'No errors yet';
+  return session.latest_error_message
+    ? `${session.latest_error_type}: ${session.latest_error_message}`
+    : session.latest_error_type;
+};
+
+export default function SessionHistoryPage() {
+  const navigate = useNavigate();
+  const { session: login, signOut } = useAuth();
+  const { session: activeSession, startSession, resumeSession, endSession } = useStudentSession();
+
+  const [sessions, setSessions] = useState<StudentSessionSummary[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+  const [course, setCourse] = useState('');
+  const [language, setLanguage] = useState('');
+  // The session the delete pop-up is asking about, if it is open.
+  const [confirming, setConfirming] = useState<StudentSessionSummary | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listStudentSessions()
+      .then((rows) => {
+        if (!cancelled) setSessions(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const sortedSessions = [...(sessions ?? [])].sort((a, b) => {
+    const difference = new Date(b.last_activity).getTime() - new Date(a.last_activity).getTime();
+    return sortOrder === 'newest' ? difference : -difference;
+  });
+
+  const handleStart = (event: FormEvent) => {
+    event.preventDefault();
+    if (!course) return;
+    startSession({ course, language: language || findCourse(course)?.language || 'Python' });
+    navigate('/student');
+  };
+
+  const handleContinue = (saved: StudentSessionSummary) => {
+    resumeSession({ id: saved.id, course: saved.course ?? '', language: saved.language ?? '' });
+    navigate('/student');
+  };
+
+  // Deleting a session: the bin icon opens a pop-up that asks first.
+  const askToDelete = (saved: StudentSessionSummary) => {
+    setDeleteError(null);
+    setConfirming(saved);
+  };
+
+  const closeDeletePopup = () => {
+    if (isDeleting) return;
+    setConfirming(null);
+  };
+
+  const handleDelete = async () => {
+    if (!confirming) return;
+    const sessionId = confirming.id;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteStudentData(sessionId);
+      setSessions((current) => (current ?? []).filter((saved) => saved.id !== sessionId));
+      setConfirming(null);
+      // A deleted session can't stay open, or later runs would be saved under it.
+      if (activeSession?.id === sessionId) endSession();
+    } catch {
+      setDeleteError('Could not delete this session. Try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    endSession();
+    await signOut();
+    navigate('/');
+  };
+
+  return (
+    <div className="min-h-screen bg-base-100 p-3 text-base-content sm:p-5">
+      <header className="navbar mb-2 gap-4 px-0">
+        <div className="flex flex-1 items-center gap-3">
+          <img src={appLogo} alt="Error Guide logo" className="h-14 w-14 shrink-0 rounded-box object-contain" />
+          <div className="min-w-0">
+            <h1 className="font-mono text-xl font-semibold tracking-wider text-primary sm:text-2xl">ERROR GUIDE</h1>
+            <p className="text-sm">Student View | Session History</p>
+          </div>
+        </div>
+
+        {/* Short explanation of the page. */}
+        <div className="dropdown dropdown-end">
+          <button type="button" tabIndex={0} className="btn btn-circle btn-ghost" aria-label="Help">
+            <CircleHelp size={26} />
+          </button>
+          <div tabIndex={0} className="dropdown-content z-20 mt-3 w-72 rounded-xl border border-base-300 bg-base-100 p-4 text-sm shadow-xl">
+            Every debugging session is saved to your account. Choose <strong>Continue</strong> to pick
+            up where you left off, with your code and the assistant's hints, or start a new session
+            for another course. The bin deletes a session and everything saved with it.
+          </div>
+        </div>
+
+        {/* Profile menu: account and log out. */}
+        <div className="dropdown dropdown-end">
+          <button type="button" tabIndex={0} className="btn btn-circle btn-primary h-12 w-12" aria-label="Open profile menu">
+            <User size={24} />
+          </button>
+          <div tabIndex={0} className="dropdown-content z-20 mt-3 w-64 rounded-xl border border-base-300 bg-base-100 p-4 shadow-xl">
+            <div className="mb-3 border-b border-base-300 pb-3">
+              <div className="font-semibold">Student</div>
+              <div className="truncate text-sm text-base-content/60">{login?.user.email ?? 'Student account'}</div>
+            </div>
+            <button type="button" className="btn btn-outline btn-error w-full" onClick={handleLogout}>
+              <LogOut size={16} />
+              Log out
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl">
+        {activeSession && (
+          <Link to="/student" className="mb-3 inline-flex items-center gap-2 text-sm text-base-content/70 hover:text-base-content">
+            <ArrowLeft size={16} />
+            Back to debugger
+          </Link>
+        )}
+
+        <h2 className="text-2xl font-bold">Your debugging sessions</h2>
+        <p className="mt-1 text-sm text-base-content/70">View and continue your past debugging sessions, or start a new one.</p>
+
+        {/* Start a new session. */}
+        <form
+          onSubmit={handleStart}
+          className="mt-4 grid gap-4 rounded-box border border-base-300 bg-base-200 p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+        >
+          <label className="flex flex-col gap-1">
+            <span className="text-sm">Course</span>
+            <select
+              className="select select-bordered w-full bg-base-100"
+              value={course}
+              onChange={(event) => {
+                setCourse(event.target.value);
+                setLanguage(findCourse(event.target.value)?.language ?? '');
+              }}
+              required
+            >
+              <option value="" disabled>Select a course</option>
+              {courses.map((option) => (
+                <option key={option.code} value={option.code} disabled={!option.available}>
+                  {option.code} {option.name}{option.available ? '' : ' (Coming soon)'}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-sm">Programming language</span>
+            <select
+              className="select select-bordered w-full bg-base-100"
+              value={language}
+              onChange={(event) => setLanguage(event.target.value)}
+            >
+              <option value="" disabled>Select a language</option>
+              {languages.map((option) => (
+                <option key={option.name} value={option.name} disabled={!option.available}>
+                  {option.name}{option.available ? '' : ' (Coming soon)'}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button type="submit" className="btn btn-primary sm:min-w-44" disabled={!course}>
+            Start session
+          </button>
+        </form>
+
+        {/* Saved sessions. */}
+        <div className="mt-6">
+          {sessions === null && !loadError && (
+            <p className="flex items-center gap-2 py-8 text-sm text-base-content/70">
+              <span className="loading loading-spinner loading-sm"></span>
+              Loading your sessions...
+            </p>
+          )}
+
+          {loadError && (
+            <p className="py-8 text-sm text-error">
+              Could not load your sessions. Check you are logged in, then refresh the page.
+            </p>
+          )}
+
+          {sessions !== null && sessions.length === 0 && (
+            <p className="py-8 text-sm text-base-content/70">
+              No sessions yet. Choose a course above to start your first one.
+            </p>
+          )}
+
+          {sortedSessions.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="table">
+                <thead>
+                  <tr className="text-base-content">
+                    <th>Session / Error</th>
+                    <th className="hidden sm:table-cell">Course</th>
+                    <th className="hidden sm:table-cell">Language</th>
+                    <th aria-sort={sortOrder === 'newest' ? 'descending' : 'ascending'}>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1"
+                        onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
+                        title={sortOrder === 'newest' ? 'Showing newest first' : 'Showing oldest first'}
+                      >
+                        Last activity
+                        {sortOrder === 'newest' ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                      </button>
+                    </th>
+                    <th><span className="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedSessions.map((saved) => (
+                    // Clicking anywhere on the row continues the session. The Continue
+                    // button stays for keyboard and screen reader users.
+                    <tr
+                      key={saved.id}
+                      className="cursor-pointer hover:bg-base-200"
+                      onClick={() => handleContinue(saved)}
+                    >
+                      <td>
+                        <div className="flex items-center gap-3">
+                          {saved.has_unresolved_error ? (
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-error text-error-content" title="Has an unresolved error">
+                              <Bug size={14} />
+                            </span>
+                          ) : (
+                            <FileText size={22} className="shrink-0 text-base-content/70" />
+                          )}
+                          <div className="min-w-0">
+                            <div className="font-semibold">{sessionTitle(saved)}</div>
+                            <div className="text-xs text-base-content/60 sm:hidden">
+                              {[saved.course, saved.language].filter(Boolean).join(' | ')}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="hidden sm:table-cell" title={findCourse(saved.course)?.name}>{saved.course ?? '-'}</td>
+                      <td className="hidden sm:table-cell">{saved.language ?? '-'}</td>
+                      <td className="whitespace-nowrap">{timeAgo(saved.last_activity)}</td>
+                      <td className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleContinue(saved);
+                            }}
+                          >
+                            Continue
+                            <ArrowRight size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-error btn-sm btn-square"
+                            onClick={(event) => {
+                              // Deleting must not also open the session.
+                              event.stopPropagation();
+                              askToDelete(saved);
+                            }}
+                            aria-label={`Delete session: ${sessionTitle(saved)}`}
+                            title="Delete this session"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* Asks before deleting, since a deleted session can't be brought back. */}
+      {confirming && (
+        <div
+          className="modal modal-open"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-session-title"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') closeDeletePopup();
+          }}
+        >
+          <div className="modal-box">
+            <h3 id="delete-session-title" className="text-lg font-bold">Delete this session?</h3>
+            <p className="mt-3 text-sm">
+              Are you sure you want to delete <strong>{sessionTitle(confirming)}</strong>
+              {confirming.course ? ` (${confirming.course})` : ''}? Its code, errors, hints and chat will be
+              deleted. This can't be undone.
+            </p>
+            {deleteError && <p className="mt-3 text-sm text-error">{deleteError}</p>}
+            <div className="modal-action">
+              <button type="button" className="btn" onClick={closeDeletePopup} disabled={isDeleting} autoFocus>
+                Cancel
+              </button>
+              <button type="button" className="btn btn-error" onClick={handleDelete} disabled={isDeleting}>
+                {isDeleting ? <span className="loading loading-spinner loading-sm"></span> : 'Delete'}
+              </button>
+            </div>
+          </div>
+          {/* Clicking outside the pop-up closes it. */}
+          <button type="button" className="modal-backdrop" onClick={closeDeletePopup} aria-label="Close" />
+        </div>
+      )}
+    </div>
+  );
+}

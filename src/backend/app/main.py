@@ -10,7 +10,7 @@ load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import analysis, execution, generation, instructor, analytics, insights, data_deletion
+from app.routers import analysis, execution, generation, instructor, analytics, insights, data_deletion, student_login, student_sessions
 
 app = FastAPI(title="Error Guide API")
 
@@ -30,7 +30,8 @@ app.include_router(instructor.router)
 app.include_router(analytics.router)
 app.include_router(data_deletion.router)
 app.include_router(insights.router)
-
+app.include_router(student_login.router)
+app.include_router(student_sessions.router)
 
 @app.get("/health")
 def health() -> dict:

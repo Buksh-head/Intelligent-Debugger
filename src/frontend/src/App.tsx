@@ -10,14 +10,16 @@ import javascriptLogo from './assets/js.jpg';
 import { Navigate, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import InstructorDashboard from './InstructorDashboard'
 import WelcomePage from './pages/WelcomePage';
+import SessionHistoryPage from './pages/SessionHistoryPage';
 import ProtectedRoute from './auth/ProtectedRoute';
 import { useAuth } from './auth/useAuth';
 import { useStudentSession } from './session/useStudentSession';
-import type { ExecutionResponse, Explanation, FeedbackMode, Finding, HintStage, SocraticAnswer } from './types';
+import { loadOrRegisterSession, restoreSession, toRecords } from './session/savedSession';
+import type { ChatMessage, ExecutionResponse, FeedbackMode, Finding, HintStage } from './types';
 import WhyThisHint from './components/WhyThisHint';
 import { getTourSample, hasSeenTour, startStudentTour, tourRunStep } from './tour/studentTour';
 import type { Driver } from 'driver.js';
-import { deleteStudentData, executeCode, getHint } from './api';
+import { appendChatMessages, deleteStudentData, executeCode, getHint, saveSessionState } from './api';
 
 import {
   LogOut,
@@ -38,28 +40,15 @@ import {
   UserRound,
   BookOpen,
   ExternalLink,
-  Copy,
-  Check,
   Trash2,
   Lightbulb,
   Lock,
   CircleHelp,
+  History,
 } from 'lucide-react';
 
 type MonacoEditor = Parameters<OnMount>[0];
 type DecorationsCollection = ReturnType<MonacoEditor['createDecorationsCollection']>;
-
-// One message in the chat panel.
-type ChatMessage = {
-  role: 'student' | 'assistant' | 'event'; // 'event' marks a resubmission within the chat
-  text: string;
-  stage?: number;
-  resourceUrl?: string | null;   // link from the curated list, if this message offers one
-  resourceLabel?: string | null; // the link's title
-  gated?: boolean;               // true while the student still owes the check answer
-  answer?: SocraticAnswer;       // set on a socratic-mode reply, rendered as diagnosis and fix
-  explanation?: Explanation | null; // how the system reached that answer
-};
 
 // Editor settings for each course. Used if the student didn't pick a language.
 const courseEditorLanguages: Record<string, { monaco: string; label: string; extension: string; logo: string }> = {
@@ -151,8 +140,7 @@ function App() {
   const [currentStage, setCurrentStage] = useState<number | null>(null);
   const [hintError, setHintError] = useState<string | null>(null);
 
-  // Session ID and data deletion
-  const [idCopied, setIdCopied] = useState(false);
+  // Deleting this session's data
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -189,6 +177,8 @@ function App() {
   // (logout, or a new start from the welcome page) it is discarded so none of
   // it can show up in the next session. Adjusting state during render rather
   // than in an effect avoids painting the old chat for a frame.
+  // The session whose saved copy has been loaded, see the save effects below.
+  const [syncedSessionId, setSyncedSessionId] = useState<string | null>(null);
   const [stateSessionId, setStateSessionId] = useState(sessionId);
   if (sessionId !== stateSessionId) {
     setStateSessionId(sessionId);
@@ -201,7 +191,6 @@ function App() {
     setInput('');
     setCurrentStage(null);
     setHintError(null);
-    setIdCopied(false);
     setConfirmingDelete(false);
     setIsDeleting(false);
     setDeleteError(null);
@@ -209,6 +198,7 @@ function App() {
     setHasChosenMode(false);
     setSplit(getSavedSplit(sessionId));
     setIsTourDemo(false);
+    setSyncedSessionId(null);
   }
 
   // Requests still in flight when the session changes must not write into the
@@ -217,6 +207,54 @@ function App() {
   useEffect(() => {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
+
+  // Saving to the student's account. Nothing is saved until the session has
+  // been loaded (or registered, if it is new), so an earlier chat is never
+  // overwritten. If that fails, e.g. when not logged in, the chat still works
+  // but isn't saved.
+  const isSynced = sessionId !== null && syncedSessionId === sessionId;
+  // How many messages of this chat are already saved.
+  const savedCountRef = useRef(0);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    loadOrRegisterSession(sessionId, studentSession?.course ?? '', studentSession?.language ?? '')
+      .then((detail) => {
+        if (cancelled) return;
+        if (detail) {
+          const restored = restoreSession(detail);
+          setCode(restored.code);
+          setResult(restored.result);
+          setMessages(restored.messages);
+          setCurrentStage(restored.currentStage);
+          setFeedbackMode(restored.feedbackMode);
+          setHasChosenMode(restored.hasChosenMode);
+        }
+        savedCountRef.current = detail?.messages.length ?? 0;
+        setSyncedSessionId(sessionId);
+      })
+      .catch(() => {
+        // Left unsynced: the session carries on without being saved.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Course and language are only needed to register a new session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
+  // Save each new chat message. A failed save is retried with the next
+  // message; the backend skips any position it already has.
+  useEffect(() => {
+    if (!isSynced || isTourDemo) return;
+    const start = savedCountRef.current;
+    if (messages.length <= start) return;
+    savedCountRef.current = messages.length;
+    appendChatMessages(sessionId, toRecords(messages, start)).catch(() => {
+      savedCountRef.current = Math.min(savedCountRef.current, start);
+    });
+  }, [messages, isSynced, isTourDemo, sessionId]);
 
   const editorRef = useRef<MonacoEditor | null>(null);
   const decorationsRef = useRef<DecorationsCollection | null>(null);
@@ -403,7 +441,7 @@ function App() {
     }
     if (!studentSession?.course) {
       setApiError('Please select your course before debugging.');
-      navigate('/');
+      navigate('/student/sessions');
       return;
     }
     const requestSessionId = sessionId;
@@ -419,6 +457,10 @@ function App() {
       );
       if (sessionIdRef.current !== requestSessionId) return;
       setResult(response);
+      // Keep the code and result so the session can be continued from here.
+      if (isSynced && requestSessionId) {
+        saveSessionState(requestSessionId, code, response).catch(() => {});
+      }
       // Mark where the new feedback starts so it reads as a continuation of
       // the conversation rather than a replacement.
       setMessages((prev) => (prev.length > 0 ? [...prev, { role: 'event', text: describeRun(response) }] : prev));
@@ -612,28 +654,17 @@ function App() {
     navigate('/');
   };
 
-  // Copies the session ID so the student can delete this session's data
-  // later, after the ID has gone from the browser
-  const handleCopySessionId = async () => {
-    if (!sessionId) return;
-    try {
-      await navigator.clipboard.writeText(sessionId);
-      setIdCopied(true);
-      setTimeout(() => setIdCopied(false), 2000);
-    } catch {
-      // Clipboard can be blocked, the ID is still shown for manual copying.
-    }
-  };
-
   // Deletes everything stored for this session, then ends it, so later runs
-  // aren't saved under the ID that was just cleared.
+  // aren't saved under the ID that was just cleared. The student stays
+  // logged in and goes back to their other sessions.
   const handleDeleteData = async () => {
     if (!sessionId) return;
     setIsDeleting(true);
     setDeleteError(null);
     try {
       await deleteStudentData(sessionId);
-      await handleLogout();
+      endSession();
+      navigate('/student/sessions');
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Could not delete your data. Try again.');
       setIsDeleting(false);
@@ -647,7 +678,7 @@ function App() {
         element={
           <>
             <div className="student-debugger flex min-h-screen flex-col p-3 sm:p-5 xl:h-screen xl:min-h-[720px]">
-              {/* Header: logo, title, session ID and profile menu */}
+              {/* Header: logo, title and profile menu */}
               <header className="navbar mb-4 flex-row items-start gap-4 lg:items-center">
                 <div className="flex flex-1 items-center gap-3">
                   <img
@@ -659,17 +690,6 @@ function App() {
                     <h1 className="font-mono text-xl font-semibold leading-tight tracking-wide text-primary sm:text-2xl sm:tracking-wider lg:text-3xl">ERROR GUIDE</h1>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       <p>Student View{selectedCourse ? ` | ${selectedCourse}` : ''}</p>
-                      {sessionId && (
-                        <button
-                          type="button"
-                          onClick={handleCopySessionId}
-                          className="badge badge-outline gap-1 font-mono text-xs cursor-pointer"
-                          title="Click to copy your full session ID"
-                        >
-                          Session {sessionId.slice(0, 8)}…
-                          {idCopied ? <Check size={12} /> : <Copy size={12} />}
-                        </button>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -684,7 +704,7 @@ function App() {
                 >
                   <CircleHelp size={28} />
                 </button>
-                {/* Profile menu: theme, session ID, delete data, log out */}
+                {/* Profile menu: theme, delete data, saved sessions, log out */}
                 <div className="dropdown dropdown-end self-start lg:self-auto">
                   <button
                     type="button"
@@ -726,31 +746,11 @@ function App() {
                         {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
                       </button>
                     </div>
-                    <div className="mb-3 border-b border-base-300 pb-3">
-                      <div className="font-medium">Session ID</div>
-                      <div className="mt-1 flex items-center gap-2">
-                        <code className="flex-1 truncate rounded bg-base-200 px-2 py-1 text-xs" title={sessionId ?? ''}>
-                          {sessionId ?? 'No active session'}
-                        </code>
-                        <button
-                          type="button"
-                          className="btn btn-xs btn-outline"
-                          onClick={handleCopySessionId}
-                          disabled={!sessionId}
-                          aria-label="Copy session ID"
-                        >
-                          {idCopied ? <Check size={14} /> : <Copy size={14} />}
-                        </button>
-                      </div>
-                      <p className="mt-1 text-xs text-base-content/60">
-                        Keep this to delete this session's data after you log out.
-                      </p>
-                    </div>
 
                     {confirmingDelete ? (
                       <div className="mb-3 rounded-lg border border-error/40 p-3">
                         <p className="mb-2 text-sm">
-                          Delete your code, errors and hints from this session? This can't be undone.
+                          Delete this session's code, errors, hints and chat? This can't be undone.
                         </p>
                         {deleteError && <p className="mb-2 text-xs text-error">{deleteError}</p>}
                         <div className="flex gap-2">
@@ -790,6 +790,15 @@ function App() {
                         Delete my data
                       </button>
                     )}
+                    {/* Saved sessions, to continue another or start a new one. */}
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm mb-3 w-full"
+                      onClick={() => navigate('/student/sessions')}
+                    >
+                      <History size={16} />
+                      My sessions
+                    </button>
                     <button
                       type="button"
                       className="btn btn-error w-full"
@@ -1190,6 +1199,17 @@ function App() {
       {/* Old login and register pages, now sent to the welcome page. */}
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/register" element={<Navigate to="/" replace />} />
+      {/* Old setup page, replaced by the session history. */}
+      <Route path="/student/setup" element={<Navigate to="/student/sessions" replace />} />
+      {/* The student's saved sessions. Only for logged-in students. */}
+      <Route
+        path="/student/sessions"
+        element={
+          <ProtectedRoute>
+            <SessionHistoryPage />
+          </ProtectedRoute>
+        }
+      />
       {/* Instructor dashboard. Only for logged-in instructors. */}
       <Route
         path="/instructor"

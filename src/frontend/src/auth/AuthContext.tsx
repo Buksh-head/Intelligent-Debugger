@@ -38,9 +38,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Returns an error message, or null if it worked
-  const signUp: AuthContextValue['signUp'] = async (email, password) => {
+  const signUp: AuthContextValue['signUp'] = async (email, password, role) => {
     // Registration uses the same small result shape as sign-in.
-    const { error } = await supabase.auth.signUp({ email, password });
+    const { error } = await supabase.auth.signUp({ email, password, options: {data: {role} },});
     return { error: error?.message ?? null };
   };
 

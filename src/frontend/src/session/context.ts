@@ -19,6 +19,7 @@ export type StudentSession = StudentContext & {
 export type StudentSessionContextValue = {
   session: StudentSession | null;
   startSession: (context: StudentContext) => void;
+  resumeSession: (session: StudentSession) => void;
   endSession: () => void;
 };
 

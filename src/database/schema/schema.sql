@@ -1,9 +1,13 @@
 -- Initial schema for the Data Aggregation Pipeline (Epic #4) and
 -- Instructor Analytics Dashboard (Epic #5)
--- No personally identifying information is stored: `session_id` is a
--- randomly generated UUID per browser session, not tied to student
--- identity, per the anonymisation requirement in #4's Data
--- Aggregation Pipeline feature
+-- `session_id` is a randomly generated UUID per debugging session.
+-- submissions, error_logs and hint_events hold no student identity
+-- themselves; the only link to a student is student_sessions, which
+-- maps a session to the student's account email so they can list,
+-- continue and delete their sessions. Deleting a session removes that
+-- link with everything else, and the daily count tables kept after
+-- deletion hold no session IDs or usernames. See
+-- docs/decisions/features/data-retention-and-deletion-policy.md.
 
 CREATE TABLE IF NOT EXISTS submissions (
     id                  BIGSERIAL PRIMARY KEY,
@@ -53,6 +57,37 @@ CREATE INDEX IF NOT EXISTS idx_submissions_created_at ON submissions (created_at
 ALTER TABLE submissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE error_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE hint_events ENABLE ROW LEVEL SECURITY;
+
+-- Links a debugging session to the student account that started it, so the
+-- student can list, continue and delete their sessions. The ID is the same
+-- UUID the frontend sends as submissions.session_id.
+CREATE TABLE IF NOT EXISTS student_sessions (
+    id              UUID PRIMARY KEY,
+    username        TEXT NOT NULL,        -- the student's account email, from the Supabase JWT
+    course          TEXT,
+    language        TEXT,
+    code            TEXT,                 -- editor contents at the last run, restored on continue
+    last_execution  JSONB,                -- the last ExecutionResponse, so hints can carry on after continue
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_student_sessions_username ON student_sessions (username);
+
+-- The chat transcript of a session, one row per message, in the shape the
+-- Student View renders it.
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id          BIGSERIAL PRIMARY KEY,
+    session_id  UUID NOT NULL REFERENCES student_sessions (id) ON DELETE CASCADE,  -- cascade: deleting a session removes its chat
+    position    INTEGER NOT NULL,         -- index in the chat, so a retried save can't add a message twice
+    role        TEXT NOT NULL CHECK (role IN ('student', 'assistant', 'event')),
+    body        JSONB NOT NULL,           -- text plus stage, resource, answer and explanation fields
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT chat_messages_position_key UNIQUE (session_id, position)
+);
+
+ALTER TABLE student_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 
 -- When student data is deleted (on request or by the scheduled purge),
 -- everything is removed except the aggregate counts the instructor

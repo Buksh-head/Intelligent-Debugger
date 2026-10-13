@@ -3,9 +3,11 @@ assistant API. These are separate from the table models in
 app/services/db.py, same library, different job: these describe what
 JSON goes over HTTP, db.py's describe what's stored in Postgres.
 """
+from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
-from sqlmodel import SQLModel
+from sqlmodel import Field, SQLModel
 
 # Feedback mode picked in the UI (see issue #95). "hints" is the default.
 FeedbackMode = Literal["hints", "socratic"]
@@ -149,6 +151,55 @@ class InsightStats(SQLModel):
     outcomes: list[AnalyticsOutcome]
     related_concepts: list[AnalyticsError] = []
     
+ChatRole = Literal["student", "assistant", "event"]
+
+
+class StudentSessionCreate(SQLModel):
+    """Registers a session the frontend has just started. The ID is the one
+    it already sends as session_id on every run."""
+    id: UUID
+    course: str | None = None
+    language: str | None = None
+
+
+class StudentSessionSummary(SQLModel):
+    """One row of the student's session history."""
+    id: str
+    course: str | None = None
+    language: str | None = None
+    latest_error_type: str | None = None
+    latest_error_message: str | None = None
+    has_unresolved_error: bool = False
+    last_activity: datetime
+
+
+class ChatMessageRecord(SQLModel):
+    """One chat message. body is the message as the Student View renders it
+    (text, stage, resource, answer, explanation)."""
+    position: int = Field(ge=0)
+    role: ChatRole
+    body: dict
+
+
+class ChatMessagesAppend(SQLModel):
+    messages: list[ChatMessageRecord] = Field(max_length=200)
+
+
+class StudentSessionState(SQLModel):
+    code: str
+    last_execution: ExecutionResponse | None = None
+
+
+class StudentSessionDetail(SQLModel):
+    """Everything needed to continue a session where the student left it."""
+    id: str
+    course: str | None = None
+    language: str | None = None
+    code: str | None = None
+    last_execution: ExecutionResponse | None = None
+    messages: list[ChatMessageRecord]
+
+
 class InsightsResponse(SQLModel):
     error_type: str
     summary: str

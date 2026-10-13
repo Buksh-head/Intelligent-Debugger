@@ -10,7 +10,7 @@ export type AuthContextValue = {
   session: Session | null; // null when no instructor is logged in
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUp: (email: string, password: string) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, role: 'student' | 'instructor') => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 };
 

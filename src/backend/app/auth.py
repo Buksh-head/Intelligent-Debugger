@@ -22,11 +22,55 @@ def _jwks_client() -> jwt.PyJWKClient:
         raise RuntimeError("SUPABASE_URL must be set to verify instructor logins")
     return jwt.PyJWKClient(f"{supabase_url}/auth/v1/.well-known/jwks.json")
 
+def _verify_token(authorization:str | None) -> dict:
+    if not authorization or not authorization.startswith("Bearer"):
+            raise HTTPException(status_code=401, detail="Missing or malformed Authorisation header")
+    
+    token = authorization.removeprefix("Bearer ")
+    try:
+        signing_key = _jwks_client().get_signing_key_from_jwt(token)
+        return jwt.decode(token, signing_key.key, algorithms=["ES256"], audience="authenticated")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
+def _require_role(authorization: str | None, role:str) -> str:
+    payload = _verify_token(authorization)
+    email = payload.get("email")
+    if not email:
+        raise HTTPException(status_code=401, detail="Token has no email claim")
+    if payload.get("app_metadata", {}).get("role") != role:
+        raise HTTPException(status_code=403, detail="Not permitted")
+    return email
+
+def get_current_student(authorization: str | None = Header(default=None)) -> str:
+    return _require_role(authorization, "student")
+
+def get_current_instructor(authorization:str | None = Header(default=None)) -> str:
+    return _require_role(authorization, "instructor")
+
+
+"""def get_current_student(authorization: str | None = Header(default=None)) -> str:
+    if not authorization or not authorization.startswith("Bearer"):
+        raise HTTPException(status_code=401, detail="Missing or malformed Authorisation header")
+
+    token = authorization.removeprefix("Bearer ")
+    try:
+        signing_key = _jwks_client().get_signing_key_from_jwt(token)
+        payload = jwt.decode(token, signing_key.key, algorithms=["ES256"], audience="authenticated")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    email = payload.get("email")
+    if not email:
+        raise HTTPException(status_code=401, detail="Token has no email claim")
+    return email
+
 
 def get_current_instructor(authorization: str | None = Header(default=None)) -> str:
-    """Returns the authenticated instructor's email, or raises 401 if the
-    Authorization header is missing or the token is invalid/expired.
-    """
+    #Returns the authenticated instructor's email, or raises 401 if the
+    #Authorization header is missing or the token is invalid/expired.
+    #
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or malformed Authorization header")
 
@@ -40,4 +84,4 @@ def get_current_instructor(authorization: str | None = Header(default=None)) -> 
     email = payload.get("email")
     if not email:
         raise HTTPException(status_code=401, detail="Token has no email claim")
-    return email
+    return email"""

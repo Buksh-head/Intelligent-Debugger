@@ -32,12 +32,22 @@ const readStoredSession = (): StudentSession | null => {
 export function StudentSessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<StudentSession | null>(readStoredSession);
 
+  const storeSession = (next: StudentSession) => {
+    const { id, ...context } = next;
+    sessionStorage.setItem(contextStorageKey, JSON.stringify(context));
+    sessionStorage.setItem(sessionIdStorageKey, id);
+    setSession(next);
+  };
+
   // Always issues a fresh ID, so nothing from an earlier session carries over.
   const startSession = (context: StudentContext) => {
-    const next = { ...context, id: crypto.randomUUID() };
-    sessionStorage.setItem(contextStorageKey, JSON.stringify(context));
-    sessionStorage.setItem(sessionIdStorageKey, next.id);
-    setSession(next);
+    storeSession({ ...context, id: crypto.randomUUID() });
+  };
+
+  // Reopens a saved session from the student's history. The Student View
+  // loads its chat and code from the account.
+  const resumeSession = (saved: StudentSession) => {
+    storeSession(saved);
   };
 
   // Clears the session from this tab only.
@@ -48,7 +58,7 @@ export function StudentSessionProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <StudentSessionContext.Provider value={{ session, startSession, endSession }}>
+    <StudentSessionContext.Provider value={{ session, startSession, resumeSession, endSession }}>
       {children}
     </StudentSessionContext.Provider>
   );

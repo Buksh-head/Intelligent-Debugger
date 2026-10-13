@@ -1,7 +1,18 @@
 // API client for the FastAPI backend (src/backend). Types live in ./types.
 
 import axios from 'axios';
-import type { AnalyticsResponse, AnalyticsDateRange, ExecutionResponse, FeedbackMode, Finding, HintResponse } from './types';
+import { supabase } from './lib/supabaseClient';
+import type {
+  AnalyticsResponse,
+  AnalyticsDateRange,
+  ChatMessageRecord,
+  ExecutionResponse,
+  FeedbackMode,
+  Finding,
+  HintResponse,
+  StudentSessionDetail,
+  StudentSessionSummary,
+} from './types';
 
 // Backend address. Empty by default, so calls go to /api on the same site
 // and the Vite proxy forwards them to the backend.
@@ -60,9 +71,67 @@ export async function getCohortAnalytics(dateRange: AnalyticsDateRange, course?:
   return response.data;
 }
 
-// Deletes everything stored for a session. The backend keeps only
-// anonymous daily counts for the instructor dashboard. Returns nothing:
-// the backend replies 204 whether or not the session had data.
+// Student session routes need the student's login, sent as a bearer token.
+async function authHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+const studentSessionUrl = (sessionId: string) =>
+  `${API_URL}/api/student/sessions/${encodeURIComponent(sessionId)}`;
+
+// Records a new session against the logged-in student. Safe to repeat.
+export async function createStudentSession(sessionId: string, course: string, language: string): Promise<void> {
+  await axios.post(
+    `${API_URL}/api/student/sessions`,
+    { id: sessionId, course: course || null, language: language || null },
+    { headers: await authHeaders() },
+  );
+}
+
+// The logged-in student's sessions, most recently used first.
+export async function listStudentSessions(): Promise<StudentSessionSummary[]> {
+  const response = await axios.get<StudentSessionSummary[]>(`${API_URL}/api/student/sessions`, {
+    headers: await authHeaders(),
+  });
+  return response.data;
+}
+
+// Loads a saved session, or null if the student has none with this ID.
+export async function getStudentSession(sessionId: string): Promise<StudentSessionDetail | null> {
+  try {
+    const response = await axios.get<StudentSessionDetail>(studentSessionUrl(sessionId), {
+      headers: await authHeaders(),
+    });
+    return response.data;
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) return null;
+    throw err;
+  }
+}
+
+// Saves chat messages. Positions already saved are skipped by the backend.
+export async function appendChatMessages(sessionId: string, messages: ChatMessageRecord[]): Promise<void> {
+  await axios.post(`${studentSessionUrl(sessionId)}/messages`, { messages }, { headers: await authHeaders() });
+}
+
+// Saves the editor code and the latest run result.
+export async function saveSessionState(
+  sessionId: string,
+  code: string,
+  lastExecution: ExecutionResponse | null,
+): Promise<void> {
+  await axios.put(
+    `${studentSessionUrl(sessionId)}/state`,
+    { code, last_execution: lastExecution },
+    { headers: await authHeaders() },
+  );
+}
+
+// Deletes everything stored for one of the logged-in student's sessions,
+// including its chat. The backend keeps only anonymous daily counts for the
+// instructor dashboard. Fails with a 404 if the session isn't the student's.
 export async function deleteStudentData(sessionId: string): Promise<void> {
-  await axios.delete(`${API_URL}/api/student-data/${encodeURIComponent(sessionId.trim())}`);
+  await axios.delete(studentSessionUrl(sessionId), { headers: await authHeaders() });
 }
