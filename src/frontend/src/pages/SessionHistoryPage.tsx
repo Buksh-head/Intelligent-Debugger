@@ -149,9 +149,14 @@ export default function SessionHistoryPage() {
             <User size={30} />
           </button>
           <div tabIndex={0} className="dropdown-content z-20 mt-3 w-64 rounded-xl border border-base-300 bg-base-100 p-4 shadow-xl">
-            <div className="mb-3 border-b border-base-300 pb-3">
-              <div className="font-semibold">Student</div>
-              <div className="truncate text-sm text-base-content/60">{login?.user.email ?? 'Student account'}</div>
+            <div className="mb-4 flex items-center gap-3 border-b border-base-300 pb-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary text-primary-content">
+                <User size={24} />
+              </div>
+              <div className="min-w-0">
+                <div className="font-semibold">Student</div>
+                <div className="truncate text-sm text-base-content/60">{login?.user.email ?? 'Student account'}</div>
+              </div>
             </div>
             <div className="mb-3 flex items-center justify-between">
               <div>
@@ -169,7 +174,7 @@ export default function SessionHistoryPage() {
                 {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
               </button>
             </div>
-            <button type="button" className="btn btn-outline btn-error w-full" onClick={handleLogout}>
+            <button type="button" className="btn btn-error w-full" onClick={handleLogout}>
               <LogOut size={16} />
               Log out
             </button>
