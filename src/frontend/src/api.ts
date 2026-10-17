@@ -129,6 +129,12 @@ export async function saveSessionState(
   );
 }
 
+// Renames one of the logged-in student's sessions. A blank title goes back
+// to the default name. Fails with a 404 if the session isn't the student's.
+export async function renameStudentSession(sessionId: string, title: string): Promise<void> {
+  await axios.patch(studentSessionUrl(sessionId), { title }, { headers: await authHeaders() });
+}
+
 // Deletes everything stored for one of the logged-in student's sessions,
 // including its chat. The backend keeps only anonymous daily counts for the
 // instructor dashboard. Fails with a 404 if the session isn't the student's.

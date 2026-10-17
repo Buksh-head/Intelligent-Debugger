@@ -167,9 +167,11 @@ class StudentSessionSummary(SQLModel):
     id: str
     course: str | None = None
     language: str | None = None
+    title: str | None = None  # None until the student renames the session
     latest_error_type: str | None = None
     latest_error_message: str | None = None
     has_unresolved_error: bool = False
+    last_run_passed: bool | None = None  # None until the code has been run
     last_activity: datetime
 
 
@@ -183,6 +185,12 @@ class ChatMessageRecord(SQLModel):
 
 class ChatMessagesAppend(SQLModel):
     messages: list[ChatMessageRecord] = Field(max_length=200)
+
+
+class StudentSessionRename(SQLModel):
+    """A new name for a session. Blank or None goes back to the default
+    name, the session's latest error."""
+    title: str | None = Field(default=None, max_length=100)
 
 
 class StudentSessionState(SQLModel):

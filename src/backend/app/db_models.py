@@ -57,6 +57,7 @@ class StudentSession(SQLModel, table=True):
     username: str
     course: str | None = None
     language: str | None = None
+    title: str | None = None
     code: str | None = None
     last_execution: dict | None = Field(default=None, sa_column=Column(JSONB))
     created_at: datetime | None = Field(

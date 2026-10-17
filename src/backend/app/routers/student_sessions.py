@@ -15,6 +15,7 @@ from app.models import (
     ChatMessagesAppend,
     StudentSessionCreate,
     StudentSessionDetail,
+    StudentSessionRename,
     StudentSessionState,
     StudentSessionSummary,
 )
@@ -51,6 +52,17 @@ def get_session(session_id: UUID, username: str = Depends(get_current_student)) 
     if detail is None:
         raise _NOT_FOUND
     return StudentSessionDetail(**detail)
+
+
+@router.patch("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+def rename_session(
+    session_id: UUID,
+    payload: StudentSessionRename,
+    username: str = Depends(get_current_student),
+) -> Response:
+    if not student_sessions.rename_session(username, str(session_id), payload.title):
+        raise _NOT_FOUND
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{session_id}/messages", status_code=status.HTTP_204_NO_CONTENT)

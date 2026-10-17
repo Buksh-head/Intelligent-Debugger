@@ -66,11 +66,15 @@ CREATE TABLE IF NOT EXISTS student_sessions (
     username        TEXT NOT NULL,        -- the student's account email, from the Supabase JWT
     course          TEXT,
     language        TEXT,
+    title           TEXT,                 -- name the student gave the session; NULL shows the latest error instead
     code            TEXT,                 -- editor contents at the last run, restored on continue
     last_execution  JSONB,                -- the last ExecutionResponse, so hints can carry on after continue
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Added after the table was first created, so existing databases get it too.
+ALTER TABLE student_sessions ADD COLUMN IF NOT EXISTS title TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_student_sessions_username ON student_sessions (username);
 

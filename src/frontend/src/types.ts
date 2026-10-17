@@ -94,9 +94,11 @@ export interface StudentSessionSummary {
   id: string;
   course: string | null;
   language: string | null;
+  title: string | null; // null until the student renames the session
   latest_error_type: string | null;
   latest_error_message: string | null;
   has_unresolved_error: boolean;
+  last_run_passed: boolean | null; // null until the code has been run
   last_activity: string; // ISO timestamp
 }
 

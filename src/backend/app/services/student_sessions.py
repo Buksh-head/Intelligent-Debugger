@@ -17,12 +17,15 @@ from app.db_models import ChatMessage, StudentSession
 from app.services.db import get_engine
 
 # The latest error of each session, whether any error is still unresolved,
-# and when the session was last used (chat saves bump updated_at, runs add
-# a submission). GREATEST skips NULLs, so sessions with no runs still sort.
+# whether the last run finished without an error or timeout (NULL if the
+# code hasn't been run), and when the session was last used (chat saves
+# bump updated_at, runs add a submission). GREATEST skips NULLs, so
+# sessions with no runs still sort.
 _LIST_SQL = text("""
     SELECT ss.id,
            ss.course,
            ss.language,
+           ss.title,
            latest.error_type AS latest_error_type,
            latest.message AS latest_error_message,
            EXISTS (
@@ -31,6 +34,12 @@ _LIST_SQL = text("""
                JOIN submissions s ON s.id = el.submission_id
                WHERE s.session_id = ss.id AND el.resolved_at IS NULL
            ) AS has_unresolved_error,
+           -- A session that hasn't run stores JSON null, not SQL NULL, so
+           -- only an object counts as a run.
+           CASE WHEN jsonb_typeof(ss.last_execution) = 'object'
+                THEN ss.last_execution->>'error' IS NULL
+                     AND NOT COALESCE((ss.last_execution->>'timed_out')::boolean, false)
+           END AS last_run_passed,
            GREATEST(
                ss.updated_at,
                (SELECT max(s.created_at) FROM submissions s WHERE s.session_id = ss.id)
@@ -149,6 +158,23 @@ def delete_session(username: str, session_id: str) -> bool:
         session.execute(text("SELECT delete_session_data(:session_id)"), {"session_id": session_id})
         session.delete(owned)
         # Without this commit the deletion is rolled back when the Session closes.
+        session.commit()
+        return True
+
+
+def rename_session(username: str, session_id: str, title: str | None) -> bool:
+    """Set the session's name, or clear it with a blank or None title.
+
+    Renaming doesn't count as activity, so the session keeps its place in
+    the history. Returns False if the session isn't the student's.
+    """
+    with Session(get_engine()) as session:
+        owned = owned_session(session, username, session_id)
+        if owned is None:
+            return False
+
+        owned.title = (title or "").strip() or None
+        session.add(owned)
         session.commit()
         return True
 

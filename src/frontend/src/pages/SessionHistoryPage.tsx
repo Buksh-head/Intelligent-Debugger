@@ -3,10 +3,10 @@
  * their account, lets them continue one where they left off, or start a
  * new one for a course and language.
  */
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Bug, ChevronDown, ChevronUp, CircleHelp, FileText, LogOut, Moon, Sun, Trash2, User } from 'lucide-react';
-import { deleteStudentData, listStudentSessions } from '../api';
+import { ArrowRight, Bug, Check, ChevronDown, ChevronUp, CircleHelp, FileText, LogOut, Moon, Pencil, Sun, Trash2, User } from 'lucide-react';
+import { deleteStudentData, listStudentSessions, renameStudentSession } from '../api';
 import { useAuth } from '../auth/useAuth';
 import { courses, findCourse, languages } from '../session/courses';
 import { timeAgo } from '../session/timeAgo';
@@ -25,8 +25,15 @@ const getInitialTheme = (): Theme => {
 
 type SortOrder = 'newest' | 'oldest';
 
-// The row title: the session's latest error, as the student saw it.
+// A session whose last run finished cleanly, with nothing left unresolved.
+const hasPassed = (session: StudentSessionSummary): boolean =>
+  session.last_run_passed === true && !session.has_unresolved_error;
+
+// The row title: the name the student gave the session, otherwise its
+// latest error as the student saw it.
 const sessionTitle = (session: StudentSessionSummary): string => {
+  if (session.title) return session.title;
+  if (hasPassed(session)) return 'Code ran successfully';
   if (!session.latest_error_type) return 'No errors yet';
   return session.latest_error_message
     ? `${session.latest_error_type}: ${session.latest_error_message}`
@@ -48,6 +55,11 @@ export default function SessionHistoryPage() {
   const [confirming, setConfirming] = useState<StudentSessionSummary | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // The session being renamed, if any, and the name typed so far.
+  const [renaming, setRenaming] = useState<{ id: string; draft: string } | null>(null);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  // Set by Escape so the blur that follows closes the box without saving.
+  const cancelRename = useRef(false);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -111,6 +123,32 @@ export default function SessionHistoryPage() {
       setDeleteError('Could not delete this session. Try again.');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const startRename = (saved: StudentSessionSummary) => {
+    setRenameError(null);
+    setRenaming({ id: saved.id, draft: saved.title ?? '' });
+  };
+
+  // Shows the new name straight away and puts the old one back if the save
+  // fails. A blank name goes back to the default.
+  const saveRename = async () => {
+    if (!renaming) return;
+    const { id, draft } = renaming;
+    setRenaming(null);
+    const title = draft.trim() || null;
+    const previous = sessions?.find((saved) => saved.id === id)?.title ?? null;
+    if (title === previous) return;
+
+    const setTitle = (value: string | null) =>
+      setSessions((current) => (current ?? []).map((saved) => (saved.id === id ? { ...saved, title: value } : saved)));
+    setTitle(title);
+    try {
+      await renameStudentSession(id, title ?? '');
+    } catch {
+      setTitle(previous);
+      setRenameError('Could not rename this session. Try again.');
     }
   };
 
@@ -243,6 +281,10 @@ export default function SessionHistoryPage() {
             </p>
           )}
 
+          {renameError && (
+            <div role="alert" className="alert alert-error mb-3 text-sm">{renameError}</div>
+          )}
+
           {(sessions !== null || loadError) && (
             <div className="w-full min-w-0">
               <table className="table w-full">
@@ -286,11 +328,43 @@ export default function SessionHistoryPage() {
                             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-error text-error-content" title="Has an unresolved error">
                               <Bug size={14} />
                             </span>
+                          ) : hasPassed(saved) ? (
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success text-success-content" title="Code ran successfully">
+                              <Check size={14} />
+                            </span>
                           ) : (
                             <FileText size={22} className="shrink-0 text-base-content/70" />
                           )}
                           <div className="min-w-0">
-                            <div className="font-semibold">{sessionTitle(saved)}</div>
+                            {renaming?.id === saved.id ? (
+                              <input
+                                type="text"
+                                className="input input-bordered input-sm w-full font-semibold"
+                                aria-label="Session name"
+                                placeholder={sessionTitle({ ...saved, title: null })}
+                                maxLength={100}
+                                autoFocus
+                                value={renaming.draft}
+                                // Typing in the box must not also open the session.
+                                onClick={(event) => event.stopPropagation()}
+                                onChange={(event) => setRenaming({ id: saved.id, draft: event.target.value })}
+                                // Both keys finish through onBlur, so the name is saved once.
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Escape') cancelRename.current = true;
+                                  if (event.key === 'Enter' || event.key === 'Escape') event.currentTarget.blur();
+                                }}
+                                onBlur={() => {
+                                  if (cancelRename.current) {
+                                    cancelRename.current = false;
+                                    setRenaming(null);
+                                  } else {
+                                    void saveRename();
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <div className={`font-semibold ${!saved.title && hasPassed(saved) ? 'text-success' : ''}`}>{sessionTitle(saved)}</div>
+                            )}
                             <div className="text-xs text-base-content/60 sm:hidden">
                               {[saved.course, saved.language].filter(Boolean).join(' | ')}
                             </div>
@@ -312,6 +386,19 @@ export default function SessionHistoryPage() {
                           >
                             Continue
                             <ArrowRight size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm btn-square"
+                            onClick={(event) => {
+                              // Renaming must not also open the session.
+                              event.stopPropagation();
+                              startRename(saved);
+                            }}
+                            aria-label={`Rename session: ${sessionTitle(saved)}`}
+                            title="Rename this session"
+                          >
+                            <Pencil size={16} />
                           </button>
                           <button
                             type="button"
