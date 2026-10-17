@@ -47,6 +47,7 @@ class ErrorLog(SQLModel, table=True):
     code_snippet: str | None = None
     hint_stage_reached: int = Field(default=1, sa_column=Column(SmallInteger, nullable=False, server_default="1"))
     vague_attempts_this_stage: int = Field(default=0, sa_column=Column(SmallInteger, nullable=False, server_default="0"))
+    incorrect_attempts_this_stage: int = Field(default=0, sa_column=Column(SmallInteger, nullable=False, server_default="0"))
     pending_resource_concept: str | None = Field(default=None)
     resource_offered: bool = Field(default=False, sa_column=Column(nullable=False, server_default="false"))
     resolved_at: datetime | None = None

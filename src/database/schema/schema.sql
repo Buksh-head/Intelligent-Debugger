@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS error_logs (
     code_snippet        TEXT,               -- the failing source line itself
     hint_stage_reached  SMALLINT NOT NULL DEFAULT 1,
     vague_attempts_this_stage SMALLINT NOT NULL DEFAULT 0,
+    incorrect_attempts_this_stage SMALLINT NOT NULL DEFAULT 0,
     pending_resource_concept  TEXT,                          -- concept key (e.g. "dictionaries") while a resource gate is open, NULL otherwise
     resource_offered          BOOLEAN NOT NULL DEFAULT false, -- set once a resource has been offered for this error; never reset
     resolved_at         TIMESTAMPTZ,

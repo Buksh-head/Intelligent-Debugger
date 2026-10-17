@@ -56,6 +56,7 @@ def create_hint(request: HintRequest) -> HintResponse:
 
         current_stage = min(error_log.hint_stage_reached or 1, Stage.REDIRECT)
         vague_attempts = error_log.vague_attempts_this_stage or 0
+        incorrect_attempts = error_log.incorrect_attempts_this_stage or 0
 
         # No previous_hint means the student hasn't been given a task to
         # respond to yet for this error aka this is turn one.
@@ -68,13 +69,17 @@ def create_hint(request: HintRequest) -> HintResponse:
             student_message=request.student_message,
             stage_task=request.previous_hint,
             pending_check_prompt=pending_resource.check_prompt if pending_resource else None,
+            error_type=request.finding.error_type,
+            code_snippet=request.finding.failing_code_snippet,
+            error_message=error_log.message or "",
         )
 
         intent = classification.intent
 
-        next_stage, next_vague_attempts, advanced, advanced_softly, clear_gate = resolve_next_stage(
+        next_stage, next_vague_attempts, advanced, advanced_softly, clear_gate, next_incorrect_attempts = resolve_next_stage(
             current_stage=current_stage,
             vague_attempts_this_stage=vague_attempts,
+            incorrect_attempts_this_stage=incorrect_attempts,
             intent=intent,
             has_pending_resource=pending_resource is not None,
         )
@@ -102,6 +107,7 @@ def create_hint(request: HintRequest) -> HintResponse:
             student_message=request.student_message,
             intent=intent,
             advanced_softly=advanced_softly,
+            attempts_at_this_stage=next_vague_attempts + next_incorrect_attempts,
             is_repeat_of_current_stage=is_repeat,
             is_first_turn=is_first_turn,
             resource_label=active.label if active else "",
@@ -125,6 +131,7 @@ def create_hint(request: HintRequest) -> HintResponse:
         if eval_doc.success:
             error_log.hint_stage_reached = next_stage
             error_log.vague_attempts_this_stage = next_vague_attempts
+            error_log.incorrect_attempts_this_stage = next_incorrect_attempts
             if offer_concept:
                 error_log.pending_resource_concept = offer_concept
                 error_log.resource_offered = True
