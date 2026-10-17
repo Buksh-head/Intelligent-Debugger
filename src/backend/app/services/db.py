@@ -1,9 +1,8 @@
 """Persistence for code submissions and execution errors (see Epic #4:
 Data Aggregation Pipeline).
 
-Writes only, for now: one row per submission and (if the run failed) one
-row per error. No query/read functions yet, that's for whoever builds the
-LLM feed / instructor dashboard on top of this.
+Writes only: one row per submission and (if the run failed) one
+row per error.
 
 Table definitions is in app.db_models.
 """

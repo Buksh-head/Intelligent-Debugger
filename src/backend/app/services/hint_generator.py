@@ -1,8 +1,9 @@
 """Constrained LLM Prompt / Staged Hint Generator (see issues #9, #11).
 
-Placeholder module. Intended to take static-analysis findings and the
+Takes static-analysis findings and the
 current hint stage and return a beginner-friendly hint that never
-reveals a full solution.
+reveals a full solution and the service for generating a direct 
+explanation of the error and its fix in one turn (Socratic mode).
 """
 from openai import OpenAI
 from datetime import datetime

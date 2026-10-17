@@ -6,7 +6,7 @@ describe existing tables, they don't create or migrate them.
 
 Separate from app/models.py: those are API request/response schemas (what
 JSON goes over HTTP), these are what's actually stored in the database.
-Same library (SQLModel), different job.
+Same library (SQLModel).
 """
 from datetime import datetime
 
@@ -16,6 +16,9 @@ from sqlmodel import Field, SQLModel
 
 
 class Submission(SQLModel, table=True):
+    """
+    A student's code submission.
+    """
     __tablename__ = "submissions"
 
     id: int | None = Field(default=None, primary_key=True)
@@ -30,6 +33,9 @@ class Submission(SQLModel, table=True):
 
 
 class ErrorLog(SQLModel, table=True):
+    """
+    An error that occurred during code execution, linked to a submission.
+    """
     __tablename__ = "error_logs"
 
     id: int | None = Field(default=None, primary_key=True)

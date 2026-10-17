@@ -1,6 +1,6 @@
 """Classifies a student's reply against the specific task given for the
 current debugging stage, so the backend knows whether to advance, hold,
-or soft-advance the stage (see issues #11, #60).
+provide a resource or soft-advance the stage (see issues #11, #60).
 """
 from enum import IntEnum
 from typing import Literal, NamedTuple

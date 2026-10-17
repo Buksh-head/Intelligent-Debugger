@@ -1,4 +1,6 @@
-"""run_llm_eval.py - Generate hints for error logs and append results to JSON"""
+"""
+Contained backend visual testing module for the LLM responses
+run_llm_eval.py - Generate hints for error logs and append results to JSON"""
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -13,7 +15,19 @@ from app.services.hint_generator import generate_hint
 
 
 def get_error_with_submission(error_id: int) -> dict:
-    """Get error with its submission code"""
+    """
+    Get the submission code, error type, message, and code snippet for a given error_id.
+    
+    Parameters
+    ----------
+    error_id : int
+        The ID of the error log entry.
+        
+    Returns
+    -------
+    dict
+        A dictionary containing the error and submission data.
+    """
     with Session(engine) as session:
         error = session.get(ErrorLog, error_id)
 
@@ -39,8 +53,29 @@ def evaluate_errors(
     output_file: str = "eval_results.json",
     limit: int = 10,
 ):
+    """
+    Evaluate errors and generate hints for them using the specified LLM model.
+
+    Parameters
+    ----------
+    error_ids : list, optional
+        List of specific error IDs to evaluate. If None, evaluates the most recent errors.
+    stage : int, optional
+        The stage of evaluation (default is 1).
+    model : str, optional
+        The LLM model to use for hint generation (default is "gpt2").
+    output_file : str, optional
+        The file to save the evaluation results (default is "eval_results.json").
+    limit : int, optional
+        The maximum number of errors to evaluate (default is 10).
+
+    Returns
+    -------
+    None
+    """
     results = []
 
+    # Phase 1: Fetch error data from the database with an open session
     with Session(engine) as session:
         if error_ids:
             statement = select(ErrorLog).where(ErrorLog.id.in_(error_ids))
@@ -71,7 +106,7 @@ def evaluate_errors(
             "timestamp": eval_doc.time.isoformat(),
         }
         results.append(result)
-        print(f"✓ Error {error.id}: Generated hint (log_no: {eval_doc.log_no})")
+        print(f"> Error {error.id}: Generated hint (log_no: {eval_doc.log_no})")
 
     # Load existing data and append
     if os.path.exists(output_file):
@@ -88,7 +123,7 @@ def evaluate_errors(
     with open(output_file, "w") as f:
         json.dump(data, f, indent=2)
 
-    print(f"\n✅ Appended {len(results)} hints to {output_file}")
+    print(f"\n> Appended {len(results)} hints to {output_file}")
 
 
 if __name__ == "__main__":
