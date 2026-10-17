@@ -150,5 +150,13 @@ export interface AnalyticsResponse {
   details: Record<string, AnalyticsConceptDetail>;
 }
 
+// AI summary for one error type, from /api/analytics/insights.
+export interface InsightsResponse {
+  error_type: string;
+  summary: string;
+  low_data: boolean; // true when there's too little data to be reliable
+  generated: boolean; // true when the summary came from the LLM
+}
+
 // The semester option is hardcoded and will need updating each semester.
 export type AnalyticsDateRange = 'today' | 'last_7_days' | 'last_month' | 'semester_2_2026';

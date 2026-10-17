@@ -4,10 +4,13 @@
  * detail view with a chart, outcomes and an AI-generated summary.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { getCohortAnalytics } from './api'
-import type { AnalyticsConcept, AnalyticsDateRange, AnalyticsResponse } from './types'
+import axios from 'axios'
+import { getCohortAnalytics, getInsights } from './api'
+import type { AnalyticsConcept, AnalyticsDateRange, AnalyticsResponse, InsightsResponse } from './types'
+import { type Theme, getInitialTheme, themeStorageKey } from './theme'
 import { ArrowLeft, ArrowRight, ChevronDown, CircleHelp, LogOut, Sun, Moon, User } from 'lucide-react'
 import { useAuth } from './auth/useAuth'
+import { courses } from './session/courses'
 import { startInstructorTour } from './tour/instructorTour'
 import { hasSeenTour } from './tour/tourStatus'
 const appLogo = '/error-guide-logo.png'
@@ -15,36 +18,9 @@ type InstructorDashboardProps = {
   onBack: () => void
 }
 
-// AI summary for one error type, from /api/analytics/insights.
-type InsightsResponse = {
-  error_type: string
-  summary: string
-  low_data: boolean // true when there's too little data to be reliable
-  generated: boolean // true when the summary came from the LLM 
-}
+// Courses in the class filter, from the same list students pick from.
+const courseCodes = courses.map((option) => option.code)
 
-// Courses in the class filter. Keep in sync with WelcomePage.
-const courseCodes = ['CSSE1001', 'CSSE2002', 'ENGG1001', 'DECO1800']
-
-// Theme setup, copied from App.tsx. Both share the same saved theme.
-const themeOptions = [
-  { label: 'Light', value: 'light' },
-  { label: 'Dark', value: 'dark' },
-  { label: 'Synthwave', value: 'synthwave' },
-  { label: 'Luxury', value: 'luxury' },
-  { label: 'Forest', value: 'forest' },
-] as const
-type Theme = (typeof themeOptions)[number]['value']
-const themeStorageKey = 'debugging-assistant.theme'
-
-// The dashboard reuses the student's theme choice so both views have a
-// consistent appearance.
-const getInitialTheme = (): Theme => {
-  const savedTheme = localStorage.getItem(themeStorageKey)
-  const savedOption = themeOptions.find((option) => option.value === savedTheme)
-  if (savedOption) return savedOption.value
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
 export default function InstructorDashboard({ onBack }: InstructorDashboardProps) {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
   // The error type being viewed.
@@ -126,24 +102,9 @@ export default function InstructorDashboard({ onBack }: InstructorDashboardProps
         setInsightLoading(true)
         setInsightError(null)
         setInsight(null)
-        const apiUrl = import.meta.env.VITE_API_URL ?? ''
-        const params = new URLSearchParams({
-          date_range: dateRange,
-        })
-        if (course) {
-          params.set('course', course)
-        }
-        const response = await fetch(
-          `${apiUrl}/api/analytics/insights/${encodeURIComponent(activeConcept.title)}?${params.toString()}`,
-          { signal: controller.signal },
-        )
-        if (!response.ok) {
-          throw new Error(`Request failed with status ${response.status}`)
-        }
-        const data: InsightsResponse = await response.json()
-        setInsight(data)
+        setInsight(await getInsights(activeConcept.title, dateRange, course, controller.signal))
       } catch (error: unknown) {
-        if (error instanceof DOMException && error.name === 'AbortError') {
+        if (axios.isCancel(error)) {
           return
         }
         setInsightError(

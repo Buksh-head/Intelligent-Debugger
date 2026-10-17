@@ -10,6 +10,7 @@ import type {
   FeedbackMode,
   Finding,
   HintResponse,
+  InsightsResponse,
   StudentSessionDetail,
   StudentSessionSummary,
 } from './types';
@@ -68,6 +69,21 @@ export async function getCohortAnalytics(dateRange: AnalyticsDateRange, course?:
   const response = await axios.get<AnalyticsResponse>(`${API_URL}/api/analytics/cohort`, {
     params: { date_range: dateRange, course },
   });
+  return response.data;
+}
+
+// Gets the AI summary for one error type. The signal cancels the request
+// when the instructor switches to another error type.
+export async function getInsights(
+  errorType: string,
+  dateRange: AnalyticsDateRange,
+  course?: string,
+  signal?: AbortSignal,
+): Promise<InsightsResponse> {
+  const response = await axios.get<InsightsResponse>(
+    `${API_URL}/api/analytics/insights/${encodeURIComponent(errorType)}`,
+    { params: { date_range: dateRange, course: course || undefined }, signal },
+  );
   return response.data;
 }
 

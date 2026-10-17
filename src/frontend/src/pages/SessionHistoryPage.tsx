@@ -12,16 +12,9 @@ import { courses, findCourse, languages } from '../session/courses';
 import { timeAgo } from '../session/timeAgo';
 import { useStudentSession } from '../session/useStudentSession';
 import type { StudentSessionSummary } from '../types';
+import { type Theme, getInitialTheme, themeStorageKey } from '../theme';
 
 const appLogo = '/error-guide-logo.png';
-const themeStorageKey = 'debugging-assistant.theme';
-type Theme = 'light' | 'dark';
-
-const getInitialTheme = (): Theme => {
-  const savedTheme = localStorage.getItem(themeStorageKey);
-  if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme;
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-};
 
 type SortOrder = 'newest' | 'oldest';
 

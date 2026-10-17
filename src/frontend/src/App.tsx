@@ -21,6 +21,7 @@ import { getTourSample, startStudentTour, tourRunStep } from './tour/studentTour
 import { hasSeenTour } from './tour/tourStatus';
 import type { Driver } from 'driver.js';
 import { appendChatMessages, executeCode, getHint, saveSessionState } from './api';
+import { type Theme, getInitialTheme, themeStorageKey } from './theme';
 
 import {
   ArrowLeft,
@@ -66,16 +67,6 @@ const languageEditorLanguages: Record<string, { monaco: string; label: string; e
   JavaScript: { monaco: 'javascript', label: 'JavaScript', extension: 'js', logo: javascriptLogo },
 };
 
-const themeOptions = [
-  { label: 'Light', value: 'light' },
-  { label: 'Dark', value: 'dark' },
-  { label: 'Synthwave', value: 'synthwave' },
-  { label: 'Forest', value: 'forest' },
-  { label: 'Luxury', value: 'luxury' },
-] as const;
-
-type Theme = (typeof themeOptions)[number]['value'];
-const themeStorageKey = 'debugging-assistant.theme';
 const appLogo = '/error-guide-logo.png';
 
 // Width split between the code and assistant panels, as the left panel's
@@ -96,17 +87,6 @@ const getSavedSplit = (sessionId: string | null): number => {
   } catch {
     return defaultSplit; // storage can be blocked, the default still works
   }
-};
-
-// Keep the selected editor language and theme consistent when students
-// return to the app or switch between sessions.
-// Use the saved theme if there is one, otherwise match the device's light/dark setting.
-const getInitialTheme = (): Theme => {
-  const savedTheme = localStorage.getItem(themeStorageKey);
-  const savedOption = themeOptions.find((option) => option.value === savedTheme);
-  if (savedOption) return savedOption.value;
-
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 };
 
 // Summarises a run for the divider that separates it from earlier feedback.
