@@ -132,16 +132,7 @@ export default function WelcomePage() {
         setError(result.error);
         return;
       }
-      if (result.role !== 'student') {
-        // Instructor account, or no profile row: end the session immediately.
-        await signOut();
-        setError(
-          result.role === 'instructor'
-            ? 'This is an instructor account. Use the Instructor tab.'
-            : 'Your account is not set up yet.',
-        );
-        return;
-      }
+      
       navigate('/student/sessions');
     } catch {
       setError('Invalid email or password.');
