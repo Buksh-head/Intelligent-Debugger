@@ -632,10 +632,11 @@ function App() {
 
   return (
     <Routes>
+      {/* Student page. Only for logged-in students. */}
       <Route
         path="/student"
         element={
-          <>
+          <ProtectedRoute requiredRole="student">
             <div className="student-debugger flex min-h-screen flex-col p-3 sm:p-5 xl:h-screen xl:min-h-[720px]">
               {/* Header: logo, title and profile menu */}
               <header className="navbar flex-row items-start gap-4 lg:items-center">
@@ -1115,7 +1116,7 @@ function App() {
                 </section>
               </main>
             </div>
-          </>
+          </ProtectedRoute>
         }
       />
       <Route path="/" element={<WelcomePage />} />
@@ -1128,7 +1129,7 @@ function App() {
       <Route
         path="/student/sessions"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute requiredRole="student">
             <SessionHistoryPage />
           </ProtectedRoute>
         }
@@ -1137,7 +1138,7 @@ function App() {
       <Route
         path="/instructor"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute requiredRole="instructor">
             <InstructorDashboard onBack={handleLogout} />
           </ProtectedRoute>
         }

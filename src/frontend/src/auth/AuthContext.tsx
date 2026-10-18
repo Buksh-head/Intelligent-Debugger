@@ -1,27 +1,28 @@
 /**
- * Keeps track of whether an instructor is logged in, and shares the
+ * Keeps track of who is logged in and what role they have, and shares the
  * login, sign-up and logout functions with the rest of the app.
- * Students don't use this. They stay anonymous.
+ * The role comes from the profiles table, never from the client.
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
-import { AuthContext, type AuthContextValue } from './context';
+import { AuthContext, type AuthContextValue, type Role } from './context';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
-  // True until we've checked for an existing login, so pages don't
-  // redirect before we know.
-  const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState<Role | null>(null);
+  // The user id the current `role` was fetched for.
+  const [roleFor, setRoleFor] = useState<string | null>(null);
+  // True until we've checked for an existing login.
+  const [sessionLoading, setSessionLoading] = useState(true);
 
+  // Effect 1: track the session.
   useEffect(() => {
-    // Pick up a login saved from an earlier visit.
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
-      setLoading(false);
+      setSessionLoading(false);
     });
 
-    // Update whenever the instructor logs in, logs out or the session expires.
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
     });
@@ -29,27 +30,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.subscription.unsubscribe();
   }, []);
 
+  // Effect 2: fetch the role whenever the logged-in user changes.
+  useEffect(() => {
+    const userId = session?.user.id;
+    if (!userId) {
+      setRole(null);
+      setRoleFor(null);
+      return;
+    }
+
+    let cancelled = false;
+    supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .single()
+      .then(({ data }) => {
+        if (cancelled) return;
+        setRole((data?.role as Role) ?? null);
+        setRoleFor(userId);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user.id]);
+
+  // Still loading if we haven't checked the session, or we have a user
+  // whose role hasn't been fetched yet.
+  const loading = sessionLoading || (session !== null && roleFor !== session.user.id);
+
   // Returns an error message, or null if it worked.
   const signIn: AuthContextValue['signIn'] = async (email, password) => {
-    // Return a simple message for the welcome page instead of exposing the
-    // Supabase error object to every component.
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error?.message ?? null };
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error || !data.user) {
+    return { error: error?.message ?? 'Unable to sign in.', role: null };
+  }
+
+  // Look up the role straight away so the caller can check it.
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', data.user.id)
+    .single();
+
+  return { error: null, role: (profile?.role as Role) ?? null };
   };
 
-  // Returns an error message, or null if it worked
   const signUp: AuthContextValue['signUp'] = async (email, password, role) => {
-    // Registration uses the same small result shape as sign-in.
-    const { error } = await supabase.auth.signUp({ email, password, options: {data: {role} },});
-    return { error: error?.message ?? null };
-  };
+  const { error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { role } },
+  });
+  return { error: error?.message ?? null };
+};
 
   const signOut = async () => {
     await supabase.auth.signOut();
   };
 
   return (
-    <AuthContext.Provider value={{ session, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ session, role, loading, signIn, signUp, signOut }}>
       {children}
     </AuthContext.Provider>
   );
