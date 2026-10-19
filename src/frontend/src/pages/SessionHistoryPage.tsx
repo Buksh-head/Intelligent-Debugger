@@ -303,8 +303,11 @@ export default function SessionHistoryPage() {
                 <tbody>
                   {sortedSessions.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-8 text-center text-sm text-base-content/70">
-                        No data available.
+                      <td colSpan={5} className={`py-8 text-center text-sm ${loadError ? 'text-error' : 'text-base-content/70'}`}>
+                        {/* A failed load must not look the same as having no sessions. */}
+                        {loadError
+                          ? 'Could not load your sessions. Check you are logged in, then refresh the page.'
+                          : 'No data available.'}
                       </td>
                     </tr>
                   ) : sortedSessions.map((saved) => (
