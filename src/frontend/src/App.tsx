@@ -943,12 +943,6 @@ function App() {
                               );
                             }
 
-                            // Show the resource link only on the message that first offered it
-                            // in this run, not on every follow-up while the gate is open.
-                            const showResource =
-                              m.resourceUrl &&
-                              !messages.slice(runStartIndex(messages, i), i).some((p) => p.resourceUrl === m.resourceUrl);
-
                             return (
                               <div key={i} className={m.role === 'student' ? 'chat chat-end' : 'chat chat-start'}>
                                 {m.role === 'assistant' && (
@@ -982,9 +976,9 @@ function App() {
                                   )}
                                 </div>
                                 {m.answer && <WhyThisHint explanation={m.explanation} />}
-                                {showResource && (
+                                {m.resourceUrl && m.text.includes(m.resourceUrl) && (
                                   <a
-                                    href={m.resourceUrl!}
+                                    href={m.resourceUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="chat-footer mt-2 btn btn-sm btn-outline hover:btn-primary gap-2"
