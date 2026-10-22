@@ -11,18 +11,44 @@ export type CourseOption = {
 };
 
 export const courses: CourseOption[] = [
-  { code: 'CSSE1001', name: 'Introduction to Software Engineering', language: 'Python', available: true },
-  { code: 'CSSE2002', name: 'Programming in the Large', language: 'Java', available: false },
-  { code: 'ENGG1001', name: 'Introduction to Engineering', language: 'Python', available: true },
-  { code: 'DECO1800', name: 'Design Computing', language: 'JavaScript', available: false },
-  { code: 'SCIE1000', name: 'Introduction to Science', language: 'Python', available: true },
+  {
+    code: "CSSE1001",
+    name: "Introduction to Software Engineering",
+    language: "Python",
+    available: true,
+  },
+  {
+    code: "CSSE2002",
+    name: "Programming in the Large",
+    language: "Java",
+    available: false,
+  },
+  {
+    code: "ENGG1001",
+    name: "Introduction to Engineering",
+    language: "Python",
+    available: true,
+  },
+  {
+    code: "DECO1800",
+    name: "Design Computing",
+    language: "JavaScript",
+    available: false,
+  },
+  {
+    code: "SCIE1000",
+    name: "Introduction to Science",
+    language: "Python",
+    available: true,
+  },
 ];
 
 export const languages = [
-  { name: 'Python', available: true },
-  { name: 'Java', available: false },
-  { name: 'JavaScript', available: false },
+  { name: "Python", available: true },
+  { name: "Java", available: false },
+  { name: "JavaScript", available: false },
 ];
 
-export const findCourse = (code: string | null | undefined): CourseOption | undefined =>
-  courses.find((course) => course.code === code);
+export const findCourse = (
+  code: string | null | undefined,
+): CourseOption | undefined => courses.find((course) => course.code === code);

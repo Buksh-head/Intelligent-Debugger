@@ -3,6 +3,7 @@ assistant API. These are separate from the table models in
 app/services/db.py, same library, different job: these describe what
 JSON goes over HTTP, db.py's describe what's stored in Postgres.
 """
+
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -15,15 +16,19 @@ FeedbackMode = Literal["hints", "socratic"]
 
 class SubmissionRequest(SQLModel):
     """The request schema for a code submission. Mirrored in src/frontend/src/types.ts."""
+
     code: str
     expected_behaviour: str = ""
     course: str | None = None
     language: str = "Python"
-    session_id: str | None = None  # sent by the frontend per student session; generated server-side if omitted
+    session_id: str | None = (
+        None  # sent by the frontend per student session; generated server-side if omitted
+    )
 
 
 class Finding(SQLModel):
     """A static-analysis finding from the code submission. Mirrored in src/frontend/src/types.ts."""
+
     error_type: str
     line_number: int | None = None
     failing_code_snippet: str = ""
@@ -31,12 +36,14 @@ class Finding(SQLModel):
 
 class SubmissionResponse(SQLModel):
     """The response schema for a code submission. Mirrored in src/frontend/src/types.ts."""
+
     status: str
     findings: list[Finding]
 
 
 class ExecutionError(SQLModel):
     """The error returned from the code execution engine. Mirrored in src/frontend/src/types.ts."""
+
     error_type: str
     message: str
     line_number: int | None = None
@@ -44,8 +51,9 @@ class ExecutionError(SQLModel):
 
 
 class ExecutionResponse(SQLModel):
-    """The response schema for a code execution. Values returned by the python execution engine. 
+    """The response schema for a code execution. Values returned by the python execution engine.
     Mirrored in src/frontend/src/types.ts."""
+
     stdout: str
     stderr: str
     exit_code: int | None = None
@@ -54,64 +62,93 @@ class ExecutionResponse(SQLModel):
     error: ExecutionError | None = None
     error_id: int | None = None
 
+
 class HintRequest(SQLModel):
     """The request schema for generating a hint. Mirrored in src/frontend/src/types.ts."""
+
     error_id: int
     finding: Finding
     execution: ExecutionResponse
-    student_message: str = "" # What the student said in response to the hint, used for stage classification
-    previous_hint: str = "" # The previous hint given to the student, used for stage classification
-    mode: FeedbackMode = "hints" # Which feedback mode to serve; socratic ignores the two fields above
+    student_message: str = (
+        ""  # What the student said in response to the hint, used for stage classification
+    )
+    previous_hint: str = (
+        ""  # The previous hint given to the student, used for stage classification
+    )
+    mode: FeedbackMode = (
+        "hints"  # Which feedback mode to serve; socratic ignores the two fields above
+    )
+
 
 class HintStage(SQLModel):
     """A single hint stage, with the text and the stage number. Mirrored in src/frontend/src/types.ts."""
+
     stage: int
     text: str | None = None
-    intent: str | None = None # The intent of the student's response to the hint, used for stage classification
-    advanced_softly: bool = False # Whether the student advanced softly (e.g., by reaching the vague attempt limit)
-    resource_url: str | None = None # The URL of the resource offered to the student, if any
-    resource_label: str | None = None # The label of the resource offered to the student, if any
-    gate_on_url: bool = False # Whether the resource is gated (i.e., the student must view it before advancing)
+    intent: str | None = (
+        None  # The intent of the student's response to the hint, used for stage classification
+    )
+    advanced_softly: bool = (
+        False  # Whether the student advanced softly (e.g., by reaching the vague attempt limit)
+    )
+    resource_url: str | None = (
+        None  # The URL of the resource offered to the student, if any
+    )
+    resource_label: str | None = (
+        None  # The label of the resource offered to the student, if any
+    )
+    gate_on_url: bool = (
+        False  # Whether the resource is gated (i.e., the student must view it before advancing)
+    )
+
 
 class SocraticAnswer(SQLModel):
     """The direct answer served in socratic mode. Mirrored in src/frontend/src/types.ts."""
+
     diagnosis: str | None = None
     fix: str | None = None
+
 
 class Attribution(SQLModel):
     """One thing that pointed the classifier at the misconception it chose.
 
     ``feature`` is the internal name; ``label`` is the only part a student sees.
     """
+
     feature: str
     label: str
     weight: float
+
 
 class Explanation(SQLModel):
     """How the system reached its diagnosis (#67). Every field is optional and
     the whole object is nullable: when the explanation layer fails the answer
     still ships. Mirrored in src/frontend/src/types.ts.
     """
+
     reasoning: str | None = None
     misconception: str | None = None
     confidence: float | None = None
     attributions: list[Attribution] | None = None
     counterfactual_question: str | None = None
 
+
 class HintResponse(SQLModel):
     """The responses generated by the LLM for a hint request. Mirrored in src/frontend/src/types.ts."""
+
     status: str
     execution: ExecutionResponse
     finding: Finding
     # Hints mode fills `hints`; socratic mode fills `answer` and leaves `hints` empty.
     hints: list[HintStage]
     answer: SocraticAnswer | None = None
-    explanation: Explanation | None = None # socratic mode only for now
+    explanation: Explanation | None = None  # socratic mode only for now
 
 
 class AnalyticsConcept(SQLModel):
-    """A concept that the system has classified a student's error as being related to for the instructor dashboard. 
+    """A concept that the system has classified a student's error as being related to for the instructor dashboard.
     Mirrored in src/frontend/src/types.ts."""
+
     name: str
     count: int
     percent: float
@@ -120,6 +157,7 @@ class AnalyticsConcept(SQLModel):
 class AnalyticsError(SQLModel):
     """An error that the system has classified a student's error as being related to for the instructor dashboard.
     Mirrored in src/frontend/src/types.ts."""
+
     label: str
     count: int
 
@@ -127,6 +165,7 @@ class AnalyticsError(SQLModel):
 class AnalyticsOutcome(SQLModel):
     """An outcome that the system has classified a student's error as being related to for the instructor dashboard.
     Mirrored in src/frontend/src/types.ts."""
+
     label: str
     count: int
     percent: float
@@ -135,12 +174,14 @@ class AnalyticsOutcome(SQLModel):
 
 class AnalyticsChartPoint(SQLModel):
     """A single point on a chart for the instructor dashboard. Mirrored in src/frontend/src/types.ts."""
+
     label: str
     count: int
 
 
 class AnalyticsConceptDetail(SQLModel):
     """A detailed view of a concept for the instructor dashboard. Mirrored in src/frontend/src/types.ts."""
+
     title: str
     description: str
     period_label: str
@@ -153,14 +194,17 @@ class AnalyticsConceptDetail(SQLModel):
 
 class AnalyticsResponse(SQLModel):
     """The response schema for the instructor dashboard analytics. Mirrored in src/frontend/src/types.ts."""
+
     analysed_sessions: int
     detected_errors: int
     concepts: list[AnalyticsConcept]
     recurring_errors: list[AnalyticsError]
     details: dict[str, AnalyticsConceptDetail]
 
+
 class InsightStats(SQLModel):
     """The stats for the instructor dashboard insights. Mirrored in src/frontend/src/types.ts."""
+
     error_type: str
     data_window: str
     total_errors: int
@@ -169,13 +213,15 @@ class InsightStats(SQLModel):
     message_breakdown: list[AnalyticsError]
     outcomes: list[AnalyticsOutcome]
     related_concepts: list[AnalyticsError] = []
-    
+
+
 ChatRole = Literal["student", "assistant", "event"]
 
 
 class StudentSessionCreate(SQLModel):
     """Registers a session the frontend has just started. The ID is the one
     it already sends as session_id on every run."""
+
     id: UUID
     course: str | None = None
     language: str | None = None
@@ -183,6 +229,7 @@ class StudentSessionCreate(SQLModel):
 
 class StudentSessionSummary(SQLModel):
     """One row of the student's session history."""
+
     id: str
     course: str | None = None
     language: str | None = None
@@ -197,6 +244,7 @@ class StudentSessionSummary(SQLModel):
 class ChatMessageRecord(SQLModel):
     """One chat message. body is the message as the Student View renders it
     (text, stage, resource, answer, explanation)."""
+
     position: int = Field(ge=0)
     role: ChatRole
     body: dict
@@ -209,6 +257,7 @@ class ChatMessagesAppend(SQLModel):
 class StudentSessionRename(SQLModel):
     """A new name for a session. Blank or None goes back to the default
     name, the session's latest error."""
+
     title: str | None = Field(default=None, max_length=100)
 
 
@@ -219,6 +268,7 @@ class StudentSessionState(SQLModel):
 
 class StudentSessionDetail(SQLModel):
     """Everything needed to continue a session where the student left it."""
+
     id: str
     course: str | None = None
     language: str | None = None
@@ -229,6 +279,7 @@ class StudentSessionDetail(SQLModel):
 
 class InsightsResponse(SQLModel):
     """The response schema for the instructor dashboard insights. Mirrored in src/frontend/src/types.ts."""
+
     error_type: str
     summary: str
     low_data: bool = False

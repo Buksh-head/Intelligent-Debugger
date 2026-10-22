@@ -1,4 +1,5 @@
 """Routes gated behind instructor authentication (#5, #17)."""
+
 from fastapi import APIRouter, Depends
 
 from app.auth import get_current_instructor

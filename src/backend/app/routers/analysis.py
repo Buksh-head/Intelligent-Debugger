@@ -1,4 +1,5 @@
 """Routes for static analysis (issue #7)."""
+
 from fastapi import APIRouter
 
 from app.models import SubmissionRequest, SubmissionResponse

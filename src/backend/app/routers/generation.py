@@ -1,28 +1,46 @@
 """Routes for hint generation (see issue #9)"""
+
 from fastapi import APIRouter, HTTPException
 
 from sqlmodel import Session
 from app.services.hint_generator import generate_hint, generate_socratic_answer
-from app.services.stage_classifier import classify_student_message, resolve_next_stage, Stage
+from app.services.stage_classifier import (
+    classify_student_message,
+    resolve_next_stage,
+    Stage,
+)
 from app.services.learning_resources import detect_concept, get_resource
 from app.services.db import get_engine
 from app.services.explainability.service import build_explanation
 from app.db_models import ErrorLog, Submission
 from app.models import HintRequest, HintResponse, HintStage, SocraticAnswer
 
-router = APIRouter(prefix="/api",tags=["generation"])
+router = APIRouter(prefix="/api", tags=["generation"])
+
+# The direct answer stays locked until the student has worked through the
+# hints to this stage for the error. Must match ANSWER_UNLOCK_STAGE in
+# src/frontend/src/App.tsx.
+SOCRATIC_UNLOCK_STAGE = Stage.LOCATE
+
 
 @router.post("/hints", response_model=HintResponse)
 def create_hint(request: HintRequest) -> HintResponse:
     """Generates hint for the corresponding findings to return a hint to correct the error.
-    
-        error_id is fetched from ErrorLog to generate hint for the corresponding error
+
+    error_id is fetched from ErrorLog to generate hint for the corresponding error
     """
     with Session(get_engine()) as session:
         error_log = session.get(ErrorLog, request.error_id)
         if not error_log:
             raise HTTPException(status_code=404, detail="Error not found")
         if request.mode == "socratic":
+            # Checked here as well as in the UI, so the answer can't be
+            # fetched by calling the API directly before the hints are tried.
+            if (error_log.hint_stage_reached or 0) < SOCRATIC_UNLOCK_STAGE:
+                raise HTTPException(
+                    status_code=403,
+                    detail="The answer unlocks once you reach hint stage 3 for this error.",
+                )
             # One turn, so no stage classification and nothing written back.
             message = error_log.message or ""
             eval_doc = generate_socratic_answer(
@@ -31,7 +49,9 @@ def create_hint(request: HintRequest) -> HintResponse:
             answer = None
             explanation = None
             if eval_doc.success:
-                answer = SocraticAnswer(diagnosis=eval_doc.diagnosis or None, fix=eval_doc.fix or None)
+                answer = SocraticAnswer(
+                    diagnosis=eval_doc.diagnosis or None, fix=eval_doc.fix or None
+                )
                 # The classifier parses the whole program, not the failing line.
                 submission = session.get(Submission, error_log.submission_id)
                 if submission is not None:
@@ -68,7 +88,9 @@ def create_hint(request: HintRequest) -> HintResponse:
         classification = classify_student_message(
             student_message=request.student_message,
             stage_task=request.previous_hint,
-            pending_check_prompt=pending_resource.check_prompt if pending_resource else None,
+            pending_check_prompt=(
+                pending_resource.check_prompt if pending_resource else None
+            ),
             error_type=request.finding.error_type,
             code_snippet=request.finding.failing_code_snippet,
             error_message=error_log.message or "",
@@ -76,7 +98,14 @@ def create_hint(request: HintRequest) -> HintResponse:
 
         intent = classification.intent
 
-        next_stage, next_vague_attempts, advanced, advanced_softly, clear_gate, next_incorrect_attempts = resolve_next_stage(
+        (
+            next_stage,
+            next_vague_attempts,
+            advanced,
+            advanced_softly,
+            clear_gate,
+            next_incorrect_attempts,
+        ) = resolve_next_stage(
             current_stage=current_stage,
             vague_attempts_this_stage=vague_attempts,
             incorrect_attempts_this_stage=incorrect_attempts,
@@ -92,7 +121,11 @@ def create_hint(request: HintRequest) -> HintResponse:
         # error, and only when a concept actually matches. Earlier would
         # interrupt "look here"; later stalls them mid-fix.
         offer_concept = None
-        if pending_concept is None and next_stage == Stage.UNDERSTAND and not error_log.resource_offered:
+        if (
+            pending_concept is None
+            and next_stage == Stage.UNDERSTAND
+            and not error_log.resource_offered
+        ):
             offer_concept = detect_concept(
                 request.finding.error_type,
                 request.finding.failing_code_snippet,
@@ -102,7 +135,10 @@ def create_hint(request: HintRequest) -> HintResponse:
         active = offer_resource or (None if clear_gate else pending_resource)
 
         eval_doc = generate_hint(
-            findings={**request.finding.model_dump(), "message": error_log.message or ""},
+            findings={
+                **request.finding.model_dump(),
+                "message": error_log.message or "",
+            },
             stage=next_stage,
             student_message=request.student_message,
             intent=intent,

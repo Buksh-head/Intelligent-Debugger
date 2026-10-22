@@ -2,9 +2,10 @@
 
 Takes static-analysis findings and the
 current hint stage and return a beginner-friendly hint that never
-reveals a full solution and the service for generating a direct 
+reveals a full solution and the service for generating a direct
 explanation of the error and its fix in one turn (Socratic mode).
 """
+
 from openai import OpenAI, RateLimitError
 from datetime import datetime
 from pydantic import BaseModel
@@ -16,14 +17,21 @@ from app.services.prompt_parts import SYSTEM_PROMPT, build_user_prompt
 logger = logging.getLogger(__name__)
 
 FALLBACK_HINT = "Hmmm, having trouble generating a hint. Please try again."
-RATE_LIMIT_HINT = "The hint generator is busy right now. Please wait a few minutes and try again."
+RATE_LIMIT_HINT = (
+    "The hint generator is busy right now. Please wait a few minutes and try again."
+)
 
-_REASONING_PATTERN = re.compile(r"<reasoning>(.*?)</reasoning>", re.DOTALL | re.IGNORECASE)
-_DIAGNOSIS_PATTERN = re.compile(r"<diagnosis>(.*?)</diagnosis>", re.DOTALL | re.IGNORECASE)
+_REASONING_PATTERN = re.compile(
+    r"<reasoning>(.*?)</reasoning>", re.DOTALL | re.IGNORECASE
+)
+_DIAGNOSIS_PATTERN = re.compile(
+    r"<diagnosis>(.*?)</diagnosis>", re.DOTALL | re.IGNORECASE
+)
 _FIX_PATTERN = re.compile(r"<fix>(.*?)</fix>", re.DOTALL | re.IGNORECASE)
 
 # Higher than the staged 120 so a fix with corrected code is not cut off.
 SOCRATIC_MAX_TOKENS = 900
+
 
 class GeneratorEvalDoc(BaseModel):
     log_no: int
@@ -42,19 +50,34 @@ class GeneratorEvalDoc(BaseModel):
     diagnosis: str = ""
     fix: str = ""
 
+
 _log_no_counter = 0
+
 
 def _next_log_no() -> int:
     global _log_no_counter
     _log_no_counter += 1
     return _log_no_counter
 
-_client = OpenAI(
-    api_key=os.environ.get("GROQ_API_TOKEN"),
-    base_url=os.environ.get("GROQ_API_URL"),
-    timeout=15,
-    max_retries=0,
-)
+
+_client: OpenAI | None = None
+
+
+def _get_client() -> OpenAI:
+    """Lazily construct the client, as stage_classifier and insight_generator
+    do, so importing this module never requires credentials. Without this
+    the whole backend test suite fails to collect on a machine with no
+    GROQ_API_TOKEN set."""
+    global _client
+    if _client is None:
+        _client = OpenAI(
+            api_key=os.environ.get("GROQ_API_TOKEN"),
+            base_url=os.environ.get("GROQ_API_URL"),
+            timeout=15,
+            max_retries=0,
+        )
+    return _client
+
 
 SYSTEM_PROMPT_OLD = """ You are an encouraging teacher who specialises in debugging and guiding students to find their own fixes.
                     You will be provided with an error log (code snippet, error type) and the current stage number in the debugging process.
@@ -129,21 +152,21 @@ SYSTEM_PROMPT_OLD = """ You are an encouraging teacher who specialises in debugg
 
 
 def generate_hint(
-        findings: dict, 
-        stage: int,
-        student_message: str = "",
-        intent: str = "",
-        advanced_softly: bool = False, 
-        attempts_at_this_stage: int = 0,
-        is_repeat_of_current_stage: bool = False,
-        is_first_turn: bool = False,
-        resource_label: str = "",
-        resource_url: str = "",
-        resource_blurb: str = "",
-        resource_check: str = "",
-        is_new_resource: bool = False,
-        gate_cleared: bool = False,
-        model:str = "qwen/qwen3.8-27b"
+    findings: dict,
+    stage: int,
+    student_message: str = "",
+    intent: str = "",
+    advanced_softly: bool = False,
+    attempts_at_this_stage: int = 0,
+    is_repeat_of_current_stage: bool = False,
+    is_first_turn: bool = False,
+    resource_label: str = "",
+    resource_url: str = "",
+    resource_blurb: str = "",
+    resource_check: str = "",
+    is_new_resource: bool = False,
+    gate_cleared: bool = False,
+    model: str = "qwen/qwen3.8-27b",
 ) -> GeneratorEvalDoc:
     """Function to generate hint to resolve the given wrror findings.
 
@@ -157,7 +180,7 @@ def generate_hint(
     error_type = findings.get("error_type", "Unknown")
     line_number = findings.get("line_number")
     code_snippet = findings.get("failing_code_snippet", "")[:400]
-    message = findings.get("message","")[:200]
+    message = findings.get("message", "")[:200]
 
     user_prompt = build_user_prompt(
         error_type=error_type,
@@ -214,19 +237,21 @@ def generate_hint(
     prompt_tokens = completion_tokens = 0
 
     try:
-        response = _client.chat.completions.create(
+        response = _get_client().chat.completions.create(
             model=model,
-            messages=messages, 
+            messages=messages,
             max_tokens=120 if resource_url else 90,
             temperature=0.7,
-            presence_penalty=0.6, # encourage new phrasing of replies, rather than repeating the same words
+            presence_penalty=0.6,  # encourage new phrasing of replies, rather than repeating the same words
         )
         response_text = response.choices[0].message.content.strip()
         if response.usage:
             prompt_tokens = response.usage.prompt_tokens
             completion_tokens = response.usage.completion_tokens
     except RateLimitError as e:
-        logger.error(f"Hint generation rate-limited for model={model}, stage={stage}: {e}")
+        logger.error(
+            f"Hint generation rate-limited for model={model}, stage={stage}: {e}"
+        )
         response_text = RATE_LIMIT_HINT
         success = False
         rate_limited = True
@@ -245,7 +270,7 @@ def generate_hint(
         success=success,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
-        rate_limited=rate_limited
+        rate_limited=rate_limited,
     )
 
 
@@ -310,8 +335,8 @@ def _split_socratic(text: str) -> tuple[str, str, str]:
 
 
 def generate_socratic_answer(
-        findings: dict,
-        model: str = "qwen/qwen3.8-27b",
+    findings: dict,
+    model: str = "qwen/qwen3.8-27b",
 ) -> GeneratorEvalDoc:
     """Generate a direct explanation of the error and its fix, in one turn.
 
@@ -350,13 +375,15 @@ def generate_socratic_answer(
     diagnosis = ""
     fix = ""
     try:
-        response = _client.chat.completions.create(
+        response = _get_client().chat.completions.create(
             model=model,
             messages=messages,
             max_tokens=SOCRATIC_MAX_TOKENS,
             temperature=0,
         )
-        reasoning, diagnosis, fix = _split_socratic(response.choices[0].message.content.strip())
+        reasoning, diagnosis, fix = _split_socratic(
+            response.choices[0].message.content.strip()
+        )
         response_text = "\n\n".join(part for part in (diagnosis, fix) if part)
         if not response_text:
             logger.error(f"Socratic generation returned no answer for model={model}")

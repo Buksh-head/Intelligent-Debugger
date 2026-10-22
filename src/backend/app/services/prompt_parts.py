@@ -45,13 +45,13 @@ STAGE_INSTRUCTIONS = {
     2: "Explain what this error type means in general, plain terms. Do not connect it to their values. Ask one question that checks they understood that general meaning. Do NOT ask how they would fix it. Do NOT tell them to look at, check, or examine any part of their code this turn, no pointing at lines, numbers or variables. This turn is about the concept only.",
     3: "Narrow down which line or piece of logic is at fault. Do not say what that line contains. Ask what it is currently doing.",
     4: "Name the KIND of change needed in general terms, this is required, even "
-       "when their last answer was wrong. Never describe it in words that reveal "
-       "what is there now ('non-zero', 'not empty'). No code, no exact values, no "
-       "variable names. Then ask them to try it.",
-    5: "REDIRECT. They have worked through every stage. Give a complete, plain-language explanation: what went wrong, which line and value is responsible, but NEVER what to change it to. NEVER write code, a snippet, a corrected line, or anything in backticks." 
-        " ALLOWED: 'The second number in that division is zero, which is why it fails.' FORBIDDEN: 'Change that zero to a non-zero number.' End by inviting them to contact course staff, in your own words, speaking "
-        " directly to the student, for example: 'If you are still stuck, ask your "
-        " course staff.' Never write 'tell them' or refer to the student as 'they'. ",
+    "when their last answer was wrong. Never describe it in words that reveal "
+    "what is there now ('non-zero', 'not empty'). No code, no exact values, no "
+    "variable names. Then ask them to try it.",
+    5: "REDIRECT. They have worked through every stage. Give a complete, plain-language explanation: what went wrong, which line and value is responsible, but NEVER what to change it to. NEVER write code, a snippet, a corrected line, or anything in backticks."
+    " ALLOWED: 'The second number in that division is zero, which is why it fails.' FORBIDDEN: 'Change that zero to a non-zero number.' End by inviting them to contact course staff, in your own words, speaking "
+    " directly to the student, for example: 'If you are still stuck, ask your "
+    " course staff.' Never write 'tell them' or refer to the student as 'they'. ",
 }
 
 # Instruction per intent to be added to the system prompt, only one applies per turn
@@ -75,7 +75,9 @@ DIRECTNESS_STEPS = {
     3: "They have missed repeatedly. Name the single line and the single position on it (for example 'the value immediately after the slash'), and ask them to type back exactly the characters they see at that spot. Do not tell them what they will find.",
 }
 
-FIRST_TURN_RULE = "This is their first message. Never reference a previous attempt or 'last time'."
+FIRST_TURN_RULE = (
+    "This is their first message. Never reference a previous attempt or 'last time'."
+)
 SOFT_ADVANCE_RULE = (
     "You are moving on despite earlier wrong or vague answers, which means they "
     "have NOT yet found the fault themselves. Do not describe the fix or the kind "
@@ -105,7 +107,7 @@ def build_user_prompt(
     gate_cleared: bool = False,
 ) -> str:
     """Assemble only the guidance that applies to THIS turn.
-    
+
     Parameters
     ----------
     error_type : str
@@ -138,7 +140,7 @@ def build_user_prompt(
         Whether this is a new learning resource, by default False.
     gate_cleared : bool, optional
         Whether the learning resource gate has been cleared, by default False.
-    
+
     Returns
     -------
     str
@@ -152,12 +154,16 @@ def build_user_prompt(
         if intent in ("asking_question", "asking_analogy", "off_topic"):
             rules.append(INTENT_RULES[intent])
         elif intent == "incorrect_answer":
-            rules.append("Their answer is wrong. Say so plainly in half a sentence, "
-                         "then give the explanation. Never claim their wrong answer "
-                         "came from their code or means something it does not.")
+            rules.append(
+                "Their answer is wrong. Say so plainly in half a sentence, "
+                "then give the explanation. Never claim their wrong answer "
+                "came from their code or means something it does not."
+            )
     elif stage == 4 and intent in ("incorrect_answer", "non_answer"):
-        rules.append("Their answer was wrong. Say so in half a sentence, then do "
-                     "the stage task anyway, name the kind of change needed.")
+        rules.append(
+            "Their answer was wrong. Say so in half a sentence, then do "
+            "the stage task anyway, name the kind of change needed."
+        )
     else:
         rule = INTENT_RULES.get(intent, "")
         if rule:
@@ -167,26 +173,32 @@ def build_user_prompt(
             rules.append(step)
         if advanced_softly:
             rules.append(SOFT_ADVANCE_RULE)
- 
+
     task = STAGE_INSTRUCTIONS.get(stage, STAGE_INSTRUCTIONS[1])
     if is_new_resource:
-        task = ("Hand them the link below and ask the check question verbatim-ish. Put the URL "
-                "on its own, never immediately followed by a full stop or comma; "
-                "punctuation touching the URL breaks the link. Do NOT explain the "
-                "concept yourself and do NOT do the stage task this turn.")
+        task = (
+            "Hand them the link below and ask the check question verbatim-ish. Put the URL "
+            "on its own, never immediately followed by a full stop or comma; "
+            "punctuation touching the URL breaks the link. Do NOT explain the "
+            "concept yourself and do NOT do the stage task this turn."
+        )
     elif resource_url and not gate_cleared:
-        task = ("They still owe you an answer to the check question below. Re-ask "
-                "only that question, worded differently. Do NOT explain the concept "
-                "and do NOT ask anything else.")
+        task = (
+            "They still owe you an answer to the check question below. Re-ask "
+            "only that question, worded differently. Do NOT explain the concept "
+            "and do NOT ask anything else."
+        )
 
     # The model reaches for an explanation of the error type at every stage,
     # because the error text is right there in the prompt. Paired with any
     # pointing sentence that becomes a composite reveal. Only stage 2 should
     # explain (it's that stage's job) and only stage 5 may reveal.
     if stage not in (2, 5):
-        rules.append("Open your reply by naming the place to look. Do not open by "
-                     "naming or describing the error type - that is not this turn's job.")
- 
+        rules.append(
+            "Open your reply by naming the place to look. Do not open by "
+            "naming or describing the error type - that is not this turn's job."
+        )
+
     parts = [
         f"<error>{error_type} on line {line_number}: {message}</error>",
         f"<code>\n{code_snippet}\n</code>",
@@ -197,8 +209,10 @@ def build_user_prompt(
     if rules:
         parts.append("ALSO:\n" + "\n".join(f"- {r}" for r in rules))
     if resource_url:
-        parts.append(f"LINK (reproduce exactly, never alter): {resource_url}\n"
-                     f"CONCEPT: {resource_label}\nCHECK QUESTION: {resource_check}")
+        parts.append(
+            f"LINK (reproduce exactly, never alter): {resource_url}\n"
+            f"CONCEPT: {resource_label}\nCHECK QUESTION: {resource_check}"
+        )
     if stage < 5:
         parts.append(NO_REVEAL_FOOTER)
     return "\n".join(parts)

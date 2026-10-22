@@ -2,12 +2,16 @@
  * Stores the anonymous student session (ID, course and language) and
  * shares it with the rest of the app.
  */
-import { useState, type ReactNode } from 'react';
-import { StudentSessionContext, type StudentContext, type StudentSession } from './context';
+import { useState, type ReactNode } from "react";
+import {
+  StudentSessionContext,
+  type StudentContext,
+  type StudentSession,
+} from "./context";
 
 // sessionStorage keys. Changing these logs out anyone mid-session.
-const contextStorageKey = 'debugging-assistant.student-context';
-const sessionIdStorageKey = 'debugging-assistant.session-id';
+const contextStorageKey = "debugging-assistant.student-context";
+const sessionIdStorageKey = "debugging-assistant.session-id";
 
 // Restores the session after a page refresh. sessionStorage is per tab, so a
 // new tab or a closed browser starts without one.
@@ -16,7 +20,9 @@ const readStoredSession = (): StudentSession | null => {
     const storedContext = sessionStorage.getItem(contextStorageKey);
     if (!storedContext) return null;
 
-    const { course = '', language = '' } = JSON.parse(storedContext) as Partial<StudentContext>;
+    const { course = "", language = "" } = JSON.parse(
+      storedContext,
+    ) as Partial<StudentContext>;
     // Tabs opened before session IDs existed have a context but no ID.
     let id = sessionStorage.getItem(sessionIdStorageKey);
     if (!id) {
@@ -30,7 +36,9 @@ const readStoredSession = (): StudentSession | null => {
 };
 
 export function StudentSessionProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<StudentSession | null>(readStoredSession);
+  const [session, setSession] = useState<StudentSession | null>(
+    readStoredSession,
+  );
 
   const storeSession = (next: StudentSession) => {
     const { id, ...context } = next;
@@ -58,7 +66,9 @@ export function StudentSessionProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <StudentSessionContext.Provider value={{ session, startSession, resumeSession, endSession }}>
+    <StudentSessionContext.Provider
+      value={{ session, startSession, resumeSession, endSession }}
+    >
       {children}
     </StudentSessionContext.Provider>
   );

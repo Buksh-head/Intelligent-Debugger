@@ -1,7 +1,12 @@
 @import "tailwindcss";
 
 @plugin "daisyui" {
-  themes: light --default, dark --prefersdark, synthwave, luxury, forest;
+  themes:
+    light --default,
+    dark --prefersdark,
+    synthwave,
+    luxury,
+    forest;
 }
 
 /* Monaco colour for a failing line returned by /api/execute. */

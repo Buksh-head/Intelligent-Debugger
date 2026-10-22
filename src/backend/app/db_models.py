@@ -8,6 +8,7 @@ Separate from app/models.py: those are API request/response schemas (what
 JSON goes over HTTP), these are what's actually stored in the database.
 Same library (SQLModel).
 """
+
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, ForeignKey, SmallInteger, func
@@ -19,6 +20,7 @@ class Submission(SQLModel, table=True):
     """
     A student's code submission.
     """
+
     __tablename__ = "submissions"
 
     id: int | None = Field(default=None, primary_key=True)
@@ -28,7 +30,8 @@ class Submission(SQLModel, table=True):
     expected_behaviour: str | None = None
     course: str | None = None
     created_at: datetime | None = Field(
-        default=None, sa_column=Column(DateTime(timezone=True), server_default=func.now())
+        default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now()),
     )
 
 
@@ -36,6 +39,7 @@ class ErrorLog(SQLModel, table=True):
     """
     An error that occurred during code execution, linked to a submission.
     """
+
     __tablename__ = "error_logs"
 
     id: int | None = Field(default=None, primary_key=True)
@@ -45,19 +49,29 @@ class ErrorLog(SQLModel, table=True):
     concept: str | None = None
     line_number: int | None = None
     code_snippet: str | None = None
-    hint_stage_reached: int = Field(default=1, sa_column=Column(SmallInteger, nullable=False, server_default="1"))
-    vague_attempts_this_stage: int = Field(default=0, sa_column=Column(SmallInteger, nullable=False, server_default="0"))
-    incorrect_attempts_this_stage: int = Field(default=0, sa_column=Column(SmallInteger, nullable=False, server_default="0"))
+    hint_stage_reached: int = Field(
+        default=1, sa_column=Column(SmallInteger, nullable=False, server_default="1")
+    )
+    vague_attempts_this_stage: int = Field(
+        default=0, sa_column=Column(SmallInteger, nullable=False, server_default="0")
+    )
+    incorrect_attempts_this_stage: int = Field(
+        default=0, sa_column=Column(SmallInteger, nullable=False, server_default="0")
+    )
     pending_resource_concept: str | None = Field(default=None)
-    resource_offered: bool = Field(default=False, sa_column=Column(nullable=False, server_default="false"))
+    resource_offered: bool = Field(
+        default=False, sa_column=Column(nullable=False, server_default="false")
+    )
     resolved_at: datetime | None = None
     created_at: datetime | None = Field(
-        default=None, sa_column=Column(DateTime(timezone=True), server_default=func.now())
+        default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now()),
     )
 
 
 class StudentSession(SQLModel, table=True):
     """A debugging session owned by one student account."""
+
     __tablename__ = "student_sessions"
 
     id: str = Field(sa_column=Column(PGUUID(as_uuid=False), primary_key=True))
@@ -68,10 +82,12 @@ class StudentSession(SQLModel, table=True):
     code: str | None = None
     last_execution: dict | None = Field(default=None, sa_column=Column(JSONB))
     created_at: datetime | None = Field(
-        default=None, sa_column=Column(DateTime(timezone=True), server_default=func.now())
+        default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now()),
     )
     updated_at: datetime | None = Field(
-        default=None, sa_column=Column(DateTime(timezone=True), server_default=func.now())
+        default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now()),
     )
 
 
@@ -90,5 +106,6 @@ class ChatMessage(SQLModel, table=True):
     role: str
     body: dict = Field(sa_column=Column(JSONB, nullable=False))
     created_at: datetime | None = Field(
-        default=None, sa_column=Column(DateTime(timezone=True), server_default=func.now())
+        default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now()),
     )

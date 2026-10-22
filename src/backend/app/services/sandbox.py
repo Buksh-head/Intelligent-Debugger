@@ -5,6 +5,7 @@ a self-hosted, containerised code-execution service. Piston handles the
 actual isolation (timeouts, memory limits, no network access), this module
 just calls it and extracts a beginner-relevant error summary from the result.
 """
+
 import os
 import re
 
@@ -57,7 +58,11 @@ def run_in_sandbox(source: str, language: str = "Python") -> dict:
         "exit_code": run["code"],
         "status": run["status"],
         "timed_out": ran_out_of_control,
-        "error": _extract_error(run["stderr"]) if run["stderr"] and not ran_out_of_control else None,
+        "error": (
+            _extract_error(run["stderr"])
+            if run["stderr"] and not ran_out_of_control
+            else None
+        ),
     }
 
 

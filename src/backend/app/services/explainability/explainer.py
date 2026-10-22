@@ -7,6 +7,7 @@ shap.LinearExplainer for this model (checked in test_attribution_explainer.py)
 so shap is not a runtime dependency. LIME is an offline cross-check, imported
 only when called.
 """
+
 import logging
 from dataclasses import dataclass
 
@@ -77,7 +78,9 @@ class AttributionExplainer:
         return transformed.toarray() if hasattr(transformed, "toarray") else transformed
 
     @staticmethod
-    def _frame(code: str, error_type: str, message: str, timed_out: bool) -> pd.DataFrame:
+    def _frame(
+        code: str, error_type: str, message: str, timed_out: bool
+    ) -> pd.DataFrame:
         features = extract_features(code, error_type, timed_out)
         features["message"] = message
         return pd.DataFrame([features])
@@ -100,11 +103,14 @@ class AttributionExplainer:
         totals = {
             feature: float(per_column[columns].sum())
             for feature, columns in self._column_blocks.items()
-            if not (code_features_only and feature in CONTEXT_FEATURES) and feature not in absent
+            if not (code_features_only and feature in CONTEXT_FEATURES)
+            and feature not in absent
         }
         return [
             Attribution(feature=feature, label=FEATURE_LABELS[feature], weight=weight)
-            for feature, weight in sorted(totals.items(), key=lambda kv: kv[1], reverse=True)
+            for feature, weight in sorted(
+                totals.items(), key=lambda kv: kv[1], reverse=True
+            )
             if weight > 0
         ][:top_n]
 

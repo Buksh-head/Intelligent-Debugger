@@ -1,7 +1,7 @@
 /**
  * Types and context for the anonymous student session.
  */
-import { createContext } from 'react';
+import { createContext } from "react";
 
 // What the student picks on the setup page.
 export type StudentContext = {
@@ -23,4 +23,5 @@ export type StudentSessionContextValue = {
   endSession: () => void;
 };
 
-export const StudentSessionContext = createContext<StudentSessionContextValue | null>(null);
+export const StudentSessionContext =
+  createContext<StudentSessionContextValue | null>(null);

@@ -7,6 +7,7 @@
 
     run from src/backend
 """
+
 import argparse
 import hashlib
 import json
@@ -23,26 +24,47 @@ from .classifier import (
     fit_pipeline,
     load_dataset,
     save_pipeline,
-    train_test_split_data
+    train_test_split_data,
 )
 
 DEFAULT_DATA_PATH = Path(__file__).resolve().parent / "data" / "misconceptions.jsonl"
-DEFAULT_OUTPUT_PATH = Path(__file__).resolve().parent / "artifacts" / "classifier.joblib"
+DEFAULT_OUTPUT_PATH = (
+    Path(__file__).resolve().parent / "artifacts" / "classifier.joblib"
+)
 DEFAULT_EVAL_PATH = Path(__file__).resolve().parent / "artifacts" / "eval_report.json"
+
 
 def parse_args() -> Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--seed", type=int, default=42, 
-                        help="Random seed for split and estimator")
-    parser.add_argument("--data-path", type=Path, default=DEFAULT_DATA_PATH,
-                        help="Path to misconceptions.jsonl")
-    parser.add_argument("--output-path", type=Path, default=DEFAULT_OUTPUT_PATH,
-                        help="Where to write the joblib artifact")
-    parser.add_argument("--eval-path", type=Path, default=DEFAULT_EVAL_PATH,
-                        help="Where to write the eval report")
-    parser.add_argument("--test-size", type=float, default=0.2,
-                        help="Fraction of the data held out for evaluation")
+    parser.add_argument(
+        "--seed", type=int, default=42, help="Random seed for split and estimator"
+    )
+    parser.add_argument(
+        "--data-path",
+        type=Path,
+        default=DEFAULT_DATA_PATH,
+        help="Path to misconceptions.jsonl",
+    )
+    parser.add_argument(
+        "--output-path",
+        type=Path,
+        default=DEFAULT_OUTPUT_PATH,
+        help="Where to write the joblib artifact",
+    )
+    parser.add_argument(
+        "--eval-path",
+        type=Path,
+        default=DEFAULT_EVAL_PATH,
+        help="Where to write the eval report",
+    )
+    parser.add_argument(
+        "--test-size",
+        type=float,
+        default=0.2,
+        help="Fraction of the data held out for evaluation",
+    )
     return parser.parse_args()
+
 
 def write_eval_report(
     metrics: dict, path: Path, seed: int, test_size: float, data_path: Path
@@ -87,16 +109,27 @@ def main() -> None:
     pipeline = build_pipeline(random_state=args.seed)
     fit_pipeline(pipeline, X_train, y_train)
 
-    metrics = evaluate(pipeline, X_train, y_train, X_test, y_test, amb_test, collision_test_mask, df)
-    write_eval_report(metrics, args.eval_path, args.seed, args.test_size, args.data_path)
+    metrics = evaluate(
+        pipeline, X_train, y_train, X_test, y_test, amb_test, collision_test_mask, df
+    )
+    write_eval_report(
+        metrics, args.eval_path, args.seed, args.test_size, args.data_path
+    )
 
     save_pipeline(pipeline, args.output_path)
 
-    print(f"headline_accuracy:  {metrics['headline_accuracy']:.3f} (n={metrics['headline_n']})")
-    print(f"ambiguous_accuracy: {metrics['ambiguous_accuracy']:.3f} (n={metrics['ambiguous_n']})")
+    print(
+        f"headline_accuracy:  {metrics['headline_accuracy']:.3f} (n={metrics['headline_n']})"
+    )
+    print(
+        f"ambiguous_accuracy: {metrics['ambiguous_accuracy']:.3f} (n={metrics['ambiguous_n']})"
+    )
     print(f"artifact saved to:  {args.output_path}")
     print(f"eval report saved:  {args.eval_path}")
-    print(f"held_out_lookup_baseline_accuracy: {metrics['held_out_lookup_baseline_accuracy']:.3f}")
+    print(
+        f"held_out_lookup_baseline_accuracy: {metrics['held_out_lookup_baseline_accuracy']:.3f}"
+    )
+
 
 if __name__ == "__main__":
     main()

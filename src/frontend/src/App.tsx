@@ -2,26 +2,50 @@
  * Main app component. Sets up the page routes and contains the whole
  * student page: code editor, run results and the hint chat.
  */
-import { useEffect, useRef, useState } from 'react';
-import Editor, { type OnMount } from '@monaco-editor/react';
-import pythonLogo from './assets/python.jpg';
-import javaLogo from './assets/java.jpg';
-import javascriptLogo from './assets/js.jpg';
-import { Navigate, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
-import InstructorDashboard from './InstructorDashboard'
-import WelcomePage from './pages/WelcomePage';
-import SessionHistoryPage from './pages/SessionHistoryPage';
-import ProtectedRoute from './auth/ProtectedRoute';
-import { useAuth } from './auth/useAuth';
-import { useStudentSession } from './session/useStudentSession';
-import { loadOrRegisterSession, restoreSession, toRecords } from './session/savedSession';
-import type { ChatMessage, ExecutionResponse, FeedbackMode, Finding, HintStage } from './types';
-import WhyThisHint from './components/WhyThisHint';
-import { getTourSample, startStudentTour, tourRunStep } from './tour/studentTour';
-import { hasSeenTour } from './tour/tourStatus';
-import type { Driver } from 'driver.js';
-import { appendChatMessages, executeCode, getHint, saveSessionState } from './api';
-import { type Theme, getInitialTheme, themeStorageKey } from './theme';
+import { useEffect, useRef, useState } from "react";
+import Editor, { type OnMount } from "@monaco-editor/react";
+import pythonLogo from "./assets/python.jpg";
+import javaLogo from "./assets/java.jpg";
+import javascriptLogo from "./assets/js.jpg";
+import {
+  Navigate,
+  Routes,
+  Route,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import InstructorDashboard from "./InstructorDashboard";
+import WelcomePage from "./pages/WelcomePage";
+import SessionHistoryPage from "./pages/SessionHistoryPage";
+import ProtectedRoute from "./auth/ProtectedRoute";
+import { useAuth } from "./auth/useAuth";
+import { useStudentSession } from "./session/useStudentSession";
+import {
+  loadOrRegisterSession,
+  restoreSession,
+  toRecords,
+} from "./session/savedSession";
+import type {
+  ChatMessage,
+  ExecutionResponse,
+  Finding,
+  HintStage,
+} from "./types";
+import WhyThisHint from "./components/WhyThisHint";
+import {
+  getTourSample,
+  startStudentTour,
+  tourRunStep,
+} from "./tour/studentTour";
+import { hasSeenTour } from "./tour/tourStatus";
+import type { Driver } from "driver.js";
+import {
+  appendChatMessages,
+  executeCode,
+  getHint,
+  saveSessionState,
+} from "./api";
+import { type Theme, getInitialTheme, themeStorageKey } from "./theme";
 
 import {
   ArrowLeft,
@@ -47,42 +71,87 @@ import {
   Lock,
   CircleHelp,
   History,
-} from 'lucide-react';
+} from "lucide-react";
 
 type MonacoEditor = Parameters<OnMount>[0];
-type DecorationsCollection = ReturnType<MonacoEditor['createDecorationsCollection']>;
+type DecorationsCollection = ReturnType<
+  MonacoEditor["createDecorationsCollection"]
+>;
 
 // Editor settings for each course. Used if the student didn't pick a language.
-const courseEditorLanguages: Record<string, { monaco: string; label: string; extension: string; logo: string }> = {
-  CSSE1001: { monaco: 'python', label: 'Python', extension: 'py', logo: pythonLogo },
-  CSSE2002: { monaco: 'java', label: 'Java', extension: 'java', logo: javaLogo },
-  ENGG1001: { monaco: 'python', label: 'Python', extension: 'py', logo: pythonLogo },
-  DECO1800: { monaco: 'javascript', label: 'JavaScript', extension: 'js', logo: javascriptLogo },
+const courseEditorLanguages: Record<
+  string,
+  { monaco: string; label: string; extension: string; logo: string }
+> = {
+  CSSE1001: {
+    monaco: "python",
+    label: "Python",
+    extension: "py",
+    logo: pythonLogo,
+  },
+  CSSE2002: {
+    monaco: "java",
+    label: "Java",
+    extension: "java",
+    logo: javaLogo,
+  },
+  ENGG1001: {
+    monaco: "python",
+    label: "Python",
+    extension: "py",
+    logo: pythonLogo,
+  },
+  DECO1800: {
+    monaco: "javascript",
+    label: "JavaScript",
+    extension: "js",
+    logo: javascriptLogo,
+  },
 };
 
 // Editor settings for each language the student can pick at setup.
-const languageEditorLanguages: Record<string, { monaco: string; label: string; extension: string; logo: string }> = {
-  Python: { monaco: 'python', label: 'Python', extension: 'py', logo: pythonLogo },
-  Java: { monaco: 'java', label: 'Java', extension: 'java', logo: javaLogo },
-  JavaScript: { monaco: 'javascript', label: 'JavaScript', extension: 'js', logo: javascriptLogo },
+const languageEditorLanguages: Record<
+  string,
+  { monaco: string; label: string; extension: string; logo: string }
+> = {
+  Python: {
+    monaco: "python",
+    label: "Python",
+    extension: "py",
+    logo: pythonLogo,
+  },
+  Java: { monaco: "java", label: "Java", extension: "java", logo: javaLogo },
+  JavaScript: {
+    monaco: "javascript",
+    label: "JavaScript",
+    extension: "js",
+    logo: javascriptLogo,
+  },
 };
 
-const appLogo = '/error-guide-logo.png';
+const appLogo = "/error-guide-logo.png";
+
+// Hint stage (Locate) at which the answer unlocks. Must match
+// SOCRATIC_UNLOCK_STAGE in src/backend/app/routers/generation.py.
+const ANSWER_UNLOCK_STAGE = 3;
 
 // Width split between the code and assistant panels, as the left panel's
 // share in percent. Saved per session so a new session starts at 50/50.
-const splitStoragePrefix = 'debugging-assistant.panel-split.';
+const splitStoragePrefix = "debugging-assistant.panel-split.";
 const defaultSplit = 50;
 const minSplit = 30;
 const maxSplit = 70;
 
-const clampSplit = (value: number) => Math.min(maxSplit, Math.max(minSplit, value));
+const clampSplit = (value: number) =>
+  Math.min(maxSplit, Math.max(minSplit, value));
 
 // This session's saved split, or the 50/50 default.
 const getSavedSplit = (sessionId: string | null): number => {
   if (!sessionId) return defaultSplit;
   try {
-    const saved = Number(sessionStorage.getItem(splitStoragePrefix + sessionId));
+    const saved = Number(
+      sessionStorage.getItem(splitStoragePrefix + sessionId),
+    );
     return saved > 0 ? clampSplit(saved) : defaultSplit;
   } catch {
     return defaultSplit; // storage can be blocked, the default still works
@@ -91,24 +160,18 @@ const getSavedSplit = (sessionId: string | null): number => {
 
 // Summarises a run for the divider that separates it from earlier feedback.
 const describeRun = (execution: ExecutionResponse): string => {
-  if (execution.timed_out) return 'Code resubmitted: timed out';
-  if (!execution.error) return 'Code resubmitted: ran successfully';
-  const line = execution.error.line_number ? ` on line ${execution.error.line_number}` : '';
+  if (execution.timed_out) return "Code resubmitted: timed out";
+  if (!execution.error) return "Code resubmitted: ran successfully";
+  const line = execution.error.line_number
+    ? ` on line ${execution.error.line_number}`
+    : "";
   return `Code resubmitted: ${execution.error.error_type}${line}`;
-};
-
-// Index of the first message in the run that message `index` belongs to.
-const runStartIndex = (messages: ChatMessage[], index: number): number => {
-  for (let i = index - 1; i >= 0; i--) {
-    if (messages[i].role === 'event') return i + 1;
-  }
-  return 0;
 };
 
 function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
-  // Code and run results 
-  const [code, setCode] = useState('');
+  // Code and run results
+  const [code, setCode] = useState("");
 
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<ExecutionResponse | null>(null);
@@ -117,16 +180,9 @@ function App() {
   // Hint chat
   const [isHintLoading, setIsHintLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [currentStage, setCurrentStage] = useState<number | null>(null);
   const [hintError, setHintError] = useState<string | null>(null);
-
-  // Hints or Answer mode
-  const [feedbackMode, setFeedbackMode] = useState<FeedbackMode>('hints');
-  // Whether the student has picked a mode yet this session. Until then both
-  // choices are laid out; after that the last choice is offered first.
-  const [hasChosenMode, setHasChosenMode] = useState(false);
-  const isSocratic = feedbackMode === 'socratic';
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -141,11 +197,11 @@ function App() {
   // a made-up result instead of calling the backend.
   const [isTourDemo, setIsTourDemo] = useState(false);
 
-  const selectedCourse = studentSession?.course ?? '';
+  const selectedCourse = studentSession?.course ?? "";
 
   // Editor language: the student's chosen language first, then their course's, then Python.
   const editorLanguage =
-    languageEditorLanguages[studentSession?.language ?? ''] ??
+    languageEditorLanguages[studentSession?.language ?? ""] ??
     courseEditorLanguages[selectedCourse] ??
     courseEditorLanguages.CSSE1001;
 
@@ -158,17 +214,15 @@ function App() {
   const [stateSessionId, setStateSessionId] = useState(sessionId);
   if (sessionId !== stateSessionId) {
     setStateSessionId(sessionId);
-    setCode('');
+    setCode("");
     setIsLoading(false);
     setResult(null);
     setApiError(null);
     setIsHintLoading(false);
     setMessages([]);
-    setInput('');
+    setInput("");
     setCurrentStage(null);
     setHintError(null);
-    setFeedbackMode('hints');
-    setHasChosenMode(false);
     setSplit(getSavedSplit(sessionId));
     setIsTourDemo(false);
     setSyncedSessionId(null);
@@ -192,7 +246,11 @@ function App() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    loadOrRegisterSession(sessionId, studentSession?.course ?? '', studentSession?.language ?? '')
+    loadOrRegisterSession(
+      sessionId,
+      studentSession?.course ?? "",
+      studentSession?.language ?? "",
+    )
       .then((detail) => {
         if (cancelled) return;
         if (detail) {
@@ -201,8 +259,6 @@ function App() {
           setResult(restored.result);
           setMessages(restored.messages);
           setCurrentStage(restored.currentStage);
-          setFeedbackMode(restored.feedbackMode);
-          setHasChosenMode(restored.hasChosenMode);
         }
         savedCountRef.current = detail?.messages.length ?? 0;
         setSyncedSessionId(sessionId);
@@ -241,26 +297,36 @@ function App() {
 
   // The final stage reveals the answer, so there is nothing further to unlock.
   const isFinalStage = currentStage === 5;
-  const sendDisabled = currentStage === null || isLoading || isHintLoading || !input.trim() || isFinalStage || isSocratic;
 
   // Chat history is retained between runs, so only use the first assistant
   // message after the most recent resubmission in the current diagnosis.
   const currentRunStart = messages.reduce(
-    (start, message, index) => (message.role === 'event' ? index + 1 : start),
+    (start, message, index) => (message.role === "event" ? index + 1 : start),
     0,
   );
   const firstHintForCurrentRun = messages
     .slice(currentRunStart)
-    .find((message) => message.role === 'assistant');
-  const answeredThisRun = messages.slice(currentRunStart).some((message) => message.answer);
-  // The student picks Hints or Answer when they first ask for help on an
-  // error. The choice holds until the code is run again, so the hints can't
-  // be skipped by asking for the answer halfway through.
+    .find((message) => message.role === "assistant");
+  const answeredThisRun = messages
+    .slice(currentRunStart)
+    .some((message) => message.answer);
+  // Help always starts with hints. The answer unlocks once the student has
+  // worked through to the locate stage, so it rewards a real attempt rather
+  // than replacing one. The backend checks the same stage.
   const helpChosen = firstHintForCurrentRun !== undefined;
-  const hintsInProgress = helpChosen && !answeredThisRun && !isFinalStage;
+  const answerUnlocked =
+    currentStage !== null && currentStage >= ANSWER_UNLOCK_STAGE;
+  const showAnswerOption = helpChosen && !answeredThisRun;
+  const sendDisabled =
+    currentStage === null ||
+    isLoading ||
+    isHintLoading ||
+    !input.trim() ||
+    isFinalStage ||
+    answeredThisRun;
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem(themeStorageKey, theme);
   }, [theme]);
 
@@ -274,12 +340,14 @@ function App() {
     }
   }, [split, sessionId]);
 
-  // Reload the saved theme when the student page opens.
-  useEffect(() => {
-    if (location.pathname === '/student') {
-      setTheme(getInitialTheme());
-    }
-  }, [location.pathname]);
+  // Reload the saved theme when the student page opens (the instructor
+  // dashboard may have changed it). Done during render, like the session
+  // reset above, so the page never paints in the old theme first.
+  const [themePath, setThemePath] = useState(location.pathname);
+  if (location.pathname !== themePath) {
+    setThemePath(location.pathname);
+    if (location.pathname === "/student") setTheme(getInitialTheme());
+  }
 
   // Highlight the failing line in the editor whenever a new result with an
   // error comes back; clear it on a clean run or a fresh loading state.
@@ -301,7 +369,7 @@ function App() {
           },
           options: {
             isWholeLine: true,
-            className: 'error-line-highlight',
+            className: "error-line-highlight",
           },
         },
       ]);
@@ -315,7 +383,7 @@ function App() {
 
     messagesContainer.scrollTo({
       top: messagesContainer.scrollHeight,
-      behavior: 'smooth',
+      behavior: "smooth",
     });
   }, [messages, isHintLoading]);
 
@@ -341,13 +409,17 @@ function App() {
 
   // Dragging the panel divider. Capturing the pointer keeps the drag going
   // when it moves over the editor or off the divider.
-  const handleDividerPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+  const handleDividerPointerDown = (
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     setIsDragging(true);
   };
 
-  const handleDividerPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+  const handleDividerPointerMove = (
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
     if (!isDragging) return;
     const main = mainRef.current;
     if (!main) return;
@@ -355,7 +427,9 @@ function App() {
     setSplit(clampSplit(((event.clientX - rect.left) / rect.width) * 100));
   };
 
-  const handleDividerPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+  const handleDividerPointerUp = (
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -376,7 +450,7 @@ function App() {
   // history is kept so the student can still refer to earlier feedback.
   const resetProgression = () => {
     setCurrentStage(null);
-    setInput('');
+    setInput("");
     setHintError(null);
   };
 
@@ -395,7 +469,7 @@ function App() {
     };
     reader.readAsText(file);
 
-    event.target.value = '';
+    event.target.value = "";
   };
 
   // Run the code in the sandbox and show the result.
@@ -409,12 +483,12 @@ function App() {
       return;
     }
     if (!code.trim()) {
-      setApiError('Please write some code before running it.');
+      setApiError("Please write some code before running it.");
       return;
     }
     if (!studentSession?.course) {
-      setApiError('Please select your course before debugging.');
-      navigate('/student/sessions');
+      setApiError("Please select your course before debugging.");
+      navigate("/student/sessions");
       return;
     }
     const requestSessionId = sessionId;
@@ -432,14 +506,20 @@ function App() {
       setResult(response);
       // Keep the code and result so the session can be continued from here.
       if (isSynced && requestSessionId) {
-        saveSessionState(requestSessionId, code, response).catch(() => { });
+        saveSessionState(requestSessionId, code, response).catch(() => {});
       }
       // Mark where the new feedback starts so it reads as a continuation of
       // the conversation rather than a replacement.
-      setMessages((prev) => (prev.length > 0 ? [...prev, { role: 'event', text: describeRun(response) }] : prev));
+      setMessages((prev) =>
+        prev.length > 0
+          ? [...prev, { role: "event", text: describeRun(response) }]
+          : prev,
+      );
     } catch (err) {
       if (sessionIdRef.current !== requestSessionId) return;
-      setApiError(err instanceof Error ? err.message : 'Failed to reach the backend.');
+      setApiError(
+        err instanceof Error ? err.message : "Failed to reach the backend.",
+      );
       setResult(null);
     } finally {
       if (sessionIdRef.current === requestSessionId) setIsLoading(false);
@@ -464,7 +544,7 @@ function App() {
         tourRef.current = null;
         if (!demo) return;
         setIsTourDemo(false);
-        setCode((current) => (current === sample.code ? '' : current));
+        setCode((current) => (current === sample.code ? "" : current));
         setResult(null);
         decorationsRef.current?.clear();
       },
@@ -477,8 +557,9 @@ function App() {
   // The ref stops it starting twice when React runs effects twice in development.
   const autoTourStartedRef = useRef(false);
   useEffect(() => {
-    if (location.pathname !== '/student' || !isSynced) return;
-    if (autoTourStartedRef.current || hasSeenTour(authSession, 'student')) return;
+    if (location.pathname !== "/student" || !isSynced) return;
+    if (autoTourStartedRef.current || hasSeenTour(authSession, "student"))
+      return;
     autoTourStartedRef.current = true;
     startTour();
     // Only re-checked when the page, login or loaded session changes.
@@ -489,14 +570,14 @@ function App() {
   const buildFinding = (execution: ExecutionResponse): Finding => ({
     error_type: execution.error!.error_type,
     line_number: execution.error!.line_number,
-    failing_code_snippet: execution.error!.code_snippet ?? '',
+    failing_code_snippet: execution.error!.code_snippet ?? "",
   });
 
   // Turns one hint from the backend into a chat message, keeping the
   // resource details so the chat can show the link and the gate state.
   const toAssistantMessage = (hint: HintStage): ChatMessage => ({
-    role: 'assistant',
-    text: hint.text ?? '',
+    role: "assistant",
+    text: hint.text ?? "",
     stage: hint.stage,
     resourceUrl: hint.resource_url,
     resourceLabel: hint.resource_label,
@@ -511,18 +592,24 @@ function App() {
     setIsHintLoading(true);
     setHintError(null);
     try {
-      const response = await getHint(result.error_id, buildFinding(result), result);
+      const response = await getHint(
+        result.error_id,
+        buildFinding(result),
+        result,
+      );
       if (sessionIdRef.current !== requestSessionId) return;
       const first = response.hints[0];
       if (first?.text) {
         setMessages((prev) => [...prev, toAssistantMessage(first)]);
         setCurrentStage(first.stage);
       } else {
-        setHintError('No hint came back. Try again in a moment.');
+        setHintError("No hint came back. Try again in a moment.");
       }
     } catch (err) {
       if (sessionIdRef.current !== requestSessionId) return;
-      setHintError(err instanceof Error ? err.message : 'Failed to get a hint.');
+      setHintError(
+        err instanceof Error ? err.message : "Failed to get a hint.",
+      );
     } finally {
       if (sessionIdRef.current === requestSessionId) setIsHintLoading(false);
     }
@@ -535,51 +622,38 @@ function App() {
     setIsHintLoading(true);
     setHintError(null);
     try {
-      const response = await getHint(result.error_id, buildFinding(result), result, '', '', 'socratic');
+      const response = await getHint(
+        result.error_id,
+        buildFinding(result),
+        result,
+        "",
+        "",
+        "socratic",
+      );
       if (sessionIdRef.current !== requestSessionId) return;
       const answer = response.answer;
       if (answer && (answer.diagnosis || answer.fix)) {
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', text: answer.fix ?? answer.diagnosis ?? '', answer, explanation: response.explanation },
+          {
+            role: "assistant",
+            text: answer.fix ?? answer.diagnosis ?? "",
+            answer,
+            explanation: response.explanation,
+          },
         ]);
       } else {
-        setHintError('No explanation came back. Try again in a moment.');
+        setHintError("No explanation came back. Try again in a moment.");
       }
     } catch (err) {
       if (sessionIdRef.current !== requestSessionId) return;
-      setHintError(err instanceof Error ? err.message : 'Failed to get an explanation.');
+      setHintError(
+        err instanceof Error ? err.message : "Failed to get an explanation.",
+      );
     } finally {
       if (sessionIdRef.current === requestSessionId) setIsHintLoading(false);
     }
   };
-
-  const chooseHints = () => {
-    setFeedbackMode('hints');
-    setHasChosenMode(true);
-    handleGetHint();
-  };
-
-  const chooseAnswer = () => {
-    setFeedbackMode('socratic');
-    setHasChosenMode(true);
-    handleGetAnswer();
-  };
-
-  // The two choices offered on later runs. The last-used one is filled in.
-  const hintChoiceButton = (lastUsed: boolean) => (
-    <button type="button" className={`btn btn-primary ${lastUsed ? '' : 'btn-outline'}`} onClick={chooseHints}>
-      <HandHelping size={16} />
-      Give me a hint
-    </button>
-  );
-
-  const answerChoiceButton = (lastUsed: boolean) => (
-    <button type="button" className={`btn btn-primary ${lastUsed ? '' : 'btn-outline'}`} onClick={chooseAnswer}>
-      <Lightbulb size={16} />
-      Show me the answer
-    </button>
-  );
 
   // Sends the student's reply. The backend classifies it against the current
   // stage task and decides whether the stage advances - the stage itself is
@@ -589,11 +663,13 @@ function App() {
     if (!result?.error || result.error_id == null) return;
 
     const studentText = input.trim();
-    const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant' && !m.answer);
+    const lastAssistant = [...messages]
+      .reverse()
+      .find((m) => m.role === "assistant" && !m.answer);
     const requestSessionId = sessionId;
 
-    setMessages((prev) => [...prev, { role: 'student', text: studentText }]);
-    setInput('');
+    setMessages((prev) => [...prev, { role: "student", text: studentText }]);
+    setInput("");
     setIsHintLoading(true);
     setHintError(null);
 
@@ -603,7 +679,7 @@ function App() {
         buildFinding(result),
         result,
         studentText,
-        lastAssistant?.text ?? '',
+        lastAssistant?.text ?? "",
       );
       if (sessionIdRef.current !== requestSessionId) return;
       const next = response.hints[0];
@@ -613,11 +689,13 @@ function App() {
       } else {
         // The endpoint returns 200 even when hint generation fails, so an
         // empty body has to be surfaced rather than rendered as a blank reply.
-        setHintError('No response came back. Try sending that again.');
+        setHintError("No response came back. Try sending that again.");
       }
     } catch (err) {
       if (sessionIdRef.current !== requestSessionId) return;
-      setHintError(err instanceof Error ? err.message : 'Failed to reach the assistant.');
+      setHintError(
+        err instanceof Error ? err.message : "Failed to reach the assistant.",
+      );
     } finally {
       if (sessionIdRef.current === requestSessionId) setIsHintLoading(false);
     }
@@ -627,7 +705,7 @@ function App() {
   const handleLogout = async () => {
     endSession();
     await signOut();
-    navigate('/');
+    navigate("/");
   };
 
   return (
@@ -637,19 +715,24 @@ function App() {
         path="/student"
         element={
           <ProtectedRoute requiredRole="student">
-            <div className="student-debugger flex min-h-screen flex-col p-3 sm:p-5 xl:h-screen xl:min-h-[720px]">
+            <div className="student-debugger flex min-h-screen flex-col p-3 sm:p-5 xl:h-screen xl:min-h-180">
               {/* Header: logo, title and profile menu */}
               <header className="navbar flex-row items-start gap-4 lg:items-center">
                 <div className="flex flex-1 items-center gap-3">
                   <img
                     src={appLogo}
                     alt="Error Guide logo"
-                    className="h-16 w-16 shrink-0 rounded-box object-contain sm:h-[88px] sm:w-[88px]"
+                    className="h-16 w-16 shrink-0 rounded-box object-contain sm:h-22 sm:w-22"
                   />
                   <div className="min-w-0">
-                    <h1 className="font-mono text-xl font-semibold leading-tight tracking-wide text-primary sm:text-2xl sm:tracking-wider lg:text-3xl">ERROR GUIDE</h1>
+                    <h1 className="font-mono text-xl font-semibold leading-tight tracking-wide text-primary sm:text-2xl sm:tracking-wider lg:text-3xl">
+                      ERROR GUIDE
+                    </h1>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <p>Student View{selectedCourse ? ` | ${selectedCourse}` : ''}</p>
+                      <p>
+                        Student View
+                        {selectedCourse ? ` | ${selectedCourse}` : ""}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -686,7 +769,9 @@ function App() {
                       </div>
                       <div>
                         <div className="font-semibold">Student</div>
-                        <div className="text-sm text-base-content/60">Student account</div>
+                        <div className="text-sm text-base-content/60">
+                          Student account
+                        </div>
                       </div>
                     </div>
 
@@ -694,23 +779,29 @@ function App() {
                       <div>
                         <div className="font-medium">Theme</div>
                         <div className="text-sm text-base-content/60 btn-outline">
-                          {theme === 'dark' ? 'Dark mode' : 'Light mode'}
+                          {theme === "dark" ? "Dark mode" : "Light mode"}
                         </div>
                       </div>
                       <button
                         type="button"
                         className="btn btn-sm btn-circle btn-outline"
-                        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                        aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+                        onClick={() =>
+                          setTheme(theme === "dark" ? "light" : "dark")
+                        }
+                        aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
                       >
-                        {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                        {theme === "dark" ? (
+                          <Sun size={16} />
+                        ) : (
+                          <Moon size={16} />
+                        )}
                       </button>
                     </div>
 
                     <button
                       type="button"
                       className="btn btn-outline btn-sm mb-3 w-full"
-                      onClick={() => navigate('/student/sessions')}
+                      onClick={() => navigate("/student/sessions")}
                     >
                       <History size={16} />
                       My sessions
@@ -729,7 +820,7 @@ function App() {
               <button
                 type="button"
                 className="btn btn-ghost btn-sm mb-2 ml-1 self-start sm:ml-2"
-                onClick={() => navigate('/student/sessions')}
+                onClick={() => navigate("/student/sessions")}
               >
                 <ArrowLeft size={16} />
                 Back to Sessions
@@ -737,12 +828,20 @@ function App() {
 
               <main
                 ref={mainRef}
-                className={`grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,var(--left))_1.5rem_minmax(0,var(--right))] xl:grid-rows-[minmax(0,1fr)] xl:gap-0 ${isDragging ? 'cursor-col-resize select-none' : ''}`}
-                style={{ '--left': `${split}fr`, '--right': `${100 - split}fr` } as React.CSSProperties}
+                className={`grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,var(--left))_1.5rem_minmax(0,var(--right))] xl:grid-rows-[minmax(0,1fr)] xl:gap-0 ${isDragging ? "cursor-col-resize select-none" : ""}`}
+                style={
+                  {
+                    "--left": `${split}fr`,
+                    "--right": `${100 - split}fr`,
+                  } as React.CSSProperties
+                }
               >
                 {/* Left side: code editor and output */}
                 <section className="flex flex-col gap-3 xl:min-h-0">
-                  <div data-tour="editor" className="student-panel card flex h-[400px] min-h-0 flex-col overflow-hidden rounded-box border border-base-300 bg-base-200 shadow-sm sm:h-[480px] xl:h-auto xl:flex-[3]">
+                  <div
+                    data-tour="editor"
+                    className="student-panel card flex h-100 min-h-0 flex-col overflow-hidden rounded-box border border-base-300 bg-base-200 shadow-sm sm:h-120 xl:h-auto xl:flex-3"
+                  >
                     <div className="student-panel-header rounded-t-box flex h-14 shrink-0 items-center justify-between bg-base-300 px-4 py-2 text-s text-base-content/60">
                       <span className="flex items-center gap-2">
                         <img
@@ -763,7 +862,11 @@ function App() {
                           disabled={isLoading || isHintLoading}
                           aria-busy={isLoading}
                         >
-                          {isLoading ? <span className="loading loading-spinner loading-xs"></span> : <Play size={14} fill="currentColor" />}
+                          {isLoading ? (
+                            <span className="loading loading-spinner loading-xs"></span>
+                          ) : (
+                            <Play size={14} fill="currentColor" />
+                          )}
                           Run
                         </button>
                       </div>
@@ -773,25 +876,51 @@ function App() {
                       <Editor
                         height="100%"
                         language={editorLanguage.monaco}
-                        theme={theme === 'light' ? 'light' : 'vs-dark'}
+                        theme={theme === "light" ? "light" : "vs-dark"}
                         value={code}
                         onChange={(value) => {
                           // Editing keeps the chat; only a new run moves the feedback on.
                           // The highlight goes, since the flagged line may no longer be the fault.
-                          setCode(value || '');
+                          setCode(value || "");
                           decorationsRef.current?.clear();
                           setApiError(null);
                         }}
                         onMount={handleEditorMount}
-                        options={{ minimap: { enabled: false }, fontSize: 14, automaticLayout: true }} />
+                        options={{
+                          minimap: { enabled: false },
+                          fontSize: 14,
+                          automaticLayout: true,
+                        }}
+                      />
 
                       {!code && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-                          <p className={`${theme === 'light' ? 'text-base-content/70' : 'text-white/70'} text-center px-6 mb-2 text-lg font-medium`}>Write your failing {editorLanguage.label} code here...</p>
-                          <p className={`${theme === 'light' ? 'text-base-content/50' : 'text-white/50'} mb-4`}>or</p>
-                          <input type="file" accept={`.${editorLanguage.extension}`} className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
-                          <button data-tour="upload" className="btn btn-primary pointer-events-auto" onClick={() => fileInputRef.current?.click()}>
-                            <Upload size={16} />Upload .{editorLanguage.extension} File</button>
+                          <p
+                            className={`${theme === "light" ? "text-base-content/70" : "text-white/70"} text-center px-6 mb-2 text-lg font-medium`}
+                          >
+                            Write your failing {editorLanguage.label} code
+                            here...
+                          </p>
+                          <p
+                            className={`${theme === "light" ? "text-base-content/50" : "text-white/50"} mb-4`}
+                          >
+                            or
+                          </p>
+                          <input
+                            type="file"
+                            accept={`.${editorLanguage.extension}`}
+                            className="hidden"
+                            ref={fileInputRef}
+                            onChange={handleFileUpload}
+                          />
+                          <button
+                            data-tour="upload"
+                            className="btn btn-primary pointer-events-auto"
+                            onClick={() => fileInputRef.current?.click()}
+                          >
+                            <Upload size={16} />
+                            Upload .{editorLanguage.extension} File
+                          </button>
                         </div>
                       )}
                     </div>
@@ -799,7 +928,10 @@ function App() {
 
                   {/* Output: what the program printed, then the error if it crashed.
                       Styled like the editor above, including its theme background. */}
-                  <div data-tour="output" className="student-panel card flex min-h-[220px] flex-col overflow-hidden rounded-box border border-base-300 bg-base-200 shadow-sm xl:min-h-0 xl:flex-[1]">
+                  <div
+                    data-tour="output"
+                    className="student-panel card flex min-h-55 flex-col overflow-hidden rounded-box border border-base-300 bg-base-200 shadow-sm xl:min-h-0 xl:flex-1"
+                  >
                     <h2 className="student-panel-header rounded-t-box flex items-center gap-2 px-4 py-2 bg-base-300 text-xs text-base-content/60">
                       <SquareTerminal size={14} />
                       Output
@@ -808,35 +940,55 @@ function App() {
                       ref={outputRef}
                       role="log"
                       aria-label="Program output"
-                      className={`student-output-surface flex-1 overflow-auto rounded-b-box border border-base-300 px-4 py-3 font-mono text-sm text-base-content ${theme === 'light' ? 'bg-white' : 'bg-[#1e1e1e]'}`}
+                      className={`student-output-surface flex-1 overflow-auto rounded-b-box border border-base-300 px-4 py-3 font-mono text-sm text-base-content ${theme === "light" ? "bg-white" : "bg-[#1e1e1e]"}`}
                     >
                       {isLoading ? (
                         <p className="text-base-content/60">Running...</p>
                       ) : !result ? (
-                        <p className="text-base-content/50">Run your code to see its output here.</p>
+                        <p className="text-base-content/50">
+                          Run your code to see its output here.
+                        </p>
                       ) : (
                         <>
-                          {result.stdout && <pre className="whitespace-pre-wrap break-words">{result.stdout}</pre>}
+                          {result.stdout && (
+                            <pre className="whitespace-pre-wrap wrap-break-word">
+                              {result.stdout}
+                            </pre>
+                          )}
                           {/* A crash shows as "IndexError: list index out of range", the
                               last line of the traceback. The full traceback, with its
                               sandbox file paths, is more than a first-year needs. */}
                           {result.error ? (
-                            <pre className="whitespace-pre-wrap break-words text-error">
-                              {result.error.message ? `${result.error.error_type}: ${result.error.message}` : result.error.error_type}
+                            <pre className="whitespace-pre-wrap wrap-break-word text-error">
+                              {result.error.message
+                                ? `${result.error.error_type}: ${result.error.message}`
+                                : result.error.error_type}
                             </pre>
                           ) : (
-                            result.stderr && <pre className="whitespace-pre-wrap break-words text-error">{result.stderr}</pre>
+                            result.stderr && (
+                              <pre className="whitespace-pre-wrap wrap-break-word text-error">
+                                {result.stderr}
+                              </pre>
+                            )
                           )}
                           {result.timed_out && (
                             // Warning yellow is unreadable as text on white, so it colours the icon only.
                             <p className="flex items-center gap-2">
-                              <AlertTriangle size={14} className="shrink-0 text-warning" />
-                              Program stopped: it ran longer than the time limit.
+                              <AlertTriangle
+                                size={14}
+                                className="shrink-0 text-warning"
+                              />
+                              Program stopped: it ran longer than the time
+                              limit.
                             </p>
                           )}
-                          {!result.stdout && !result.stderr && !result.timed_out && (
-                            <p className="text-base-content/60">Program finished with no output.</p>
-                          )}
+                          {!result.stdout &&
+                            !result.stderr &&
+                            !result.timed_out && (
+                              <p className="text-base-content/60">
+                                Program finished with no output.
+                              </p>
+                            )}
                         </>
                       )}
                     </div>
@@ -862,61 +1014,100 @@ function App() {
                   onDoubleClick={() => setSplit(defaultSplit)}
                 >
                   <div
-                    className={`h-full w-1 rounded-full transition-colors ${isDragging ? 'bg-primary' : 'bg-base-300 group-hover:bg-primary/60'}`}
+                    className={`h-full w-1 rounded-full transition-colors ${isDragging ? "bg-primary" : "bg-base-300 group-hover:bg-primary/60"}`}
                   />
                 </div>
 
                 {/* Right side: run results and hint chat */}
-                <section className="flex h-[540px] min-h-0 flex-col sm:h-[620px] xl:h-auto">
-                  <div data-tour="assistant" className="student-card card bg-base-200 shadow-sm flex-1 flex flex-col min-h-0 overflow-hidden border border-base-300">
-
+                <section className="flex h-135 min-h-0 flex-col sm:h-155 xl:h-auto">
+                  <div
+                    data-tour="assistant"
+                    className="student-card card bg-base-200 shadow-sm flex-1 flex flex-col min-h-0 overflow-hidden border border-base-300"
+                  >
                     <div className="student-panel-header flex h-14 shrink-0 flex-wrap items-center gap-2 rounded-t-box border-b border-base-300/50 bg-base-300 px-4 py-2">
                       <Sparkles className="mr-1 text-primary size-6" />
-                      <h2 className="flex-1 font-semibold text-xl tracking-wider">LLM ASSISTANT</h2>
+                      <h2 className="flex-1 font-semibold text-xl tracking-wider">
+                        LLM ASSISTANT
+                      </h2>
                     </div>
 
                     <div className="flex flex-1 min-h-0 flex-col gap-1 p-3 sm:p-4">
-
                       <div className="shrink-0">
-                        {isLoading && <p className="text-sm opacity-70">Running your code...</p>}
-                        {apiError && <p className="text-error text-sm">{apiError}</p>}
+                        {isLoading && (
+                          <p className="text-sm opacity-70">
+                            Running your code...
+                          </p>
+                        )}
+                        {apiError && (
+                          <p className="text-error text-sm">{apiError}</p>
+                        )}
 
                         {result?.timed_out && (
                           <div className="alert alert-warning text-sm p-3">
-                            <AlertTriangle size={18} className="shrink-0 my-auto" />
-                            <span className="font-bold">Execution Timed Out:</span> Check for infinite loops.
+                            <AlertTriangle
+                              size={18}
+                              className="shrink-0 my-auto"
+                            />
+                            <span className="font-bold">
+                              Execution Timed Out:
+                            </span>{" "}
+                            Check for infinite loops.
                           </div>
                         )}
 
                         {result && !result.timed_out && !result.error && (
                           <div className="alert alert-success text-sm p-3">
-                            <CheckCircle2 size={16} className="shrink-0 my-auto" />
-                            <span className="font-bold my-auto">Execution Successful</span>
+                            <CheckCircle2
+                              size={16}
+                              className="shrink-0 my-auto"
+                            />
+                            <span className="font-bold my-auto">
+                              Execution Successful
+                            </span>
                           </div>
                         )}
 
                         {result?.error && (
-                          <div data-tour="error" className="rounded-box border border-error/40 bg-error/10 px-3 py-2 text-sm" role="alert">
+                          <div
+                            data-tour="error"
+                            className="rounded-box border border-error/40 bg-error/10 px-3 py-2 text-sm"
+                            role="alert"
+                          >
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                               <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-                                <AlertCircle size={17} className="shrink-0 text-error" />
-                                <p className="text-xs font-semibold tracking-wide text-base-content/60">WHAT HAPPENED</p>
-                                <p className="font-medium">{result.error.error_type}</p>
-                                <p className="min-w-0 text-base-content/75">{result.error.message}</p>
+                                <AlertCircle
+                                  size={17}
+                                  className="shrink-0 text-error"
+                                />
+                                <p className="text-xs font-semibold tracking-wide text-base-content/60">
+                                  WHAT HAPPENED
+                                </p>
+                                <p className="font-medium">
+                                  {result.error.error_type}
+                                </p>
+                                <p className="min-w-0 text-base-content/75">
+                                  {result.error.message}
+                                </p>
                               </div>
 
                               <div className="ml-auto flex shrink-0 items-center gap-2">
-                                <p className="text-xs font-semibold tracking-wide text-base-content/60">WHERE TO LOOK</p>
+                                <p className="text-xs font-semibold tracking-wide text-base-content/60">
+                                  WHERE TO LOOK
+                                </p>
                                 {result.error.line_number ? (
                                   <button
                                     type="button"
                                     className="btn btn-sm btn-error"
-                                    onClick={() => focusErrorLine(result.error!.line_number!)}
+                                    onClick={() =>
+                                      focusErrorLine(result.error!.line_number!)
+                                    }
                                   >
                                     Go to line {result.error.line_number}
                                   </button>
                                 ) : (
-                                  <p className="text-base-content/75">Review the code near the error.</p>
+                                  <p className="text-base-content/75">
+                                    Review the code near the error.
+                                  </p>
                                 )}
                               </div>
                             </div>
@@ -925,27 +1116,41 @@ function App() {
                       </div>
 
                       <div className="student-chat-surface flex-1 bg-base-100 rounded-box border border-base-300 flex flex-col overflow-hidden">
-
-                        <div ref={messagesContainerRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto p-3 sm:p-4">
-                          {!result?.error && !isLoading && messages.length === 0 && (
-                            <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-base opacity-50 sm:flex-row sm:text-lg">
-                              <span>Submit code to see feedback here</span>
-                              <SquareCode className='size-8 sm:size-9' />
-                            </div>
-                          )}
+                        <div
+                          ref={messagesContainerRef}
+                          className="flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto p-3 sm:p-4"
+                        >
+                          {!result?.error &&
+                            !isLoading &&
+                            messages.length === 0 && (
+                              <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-base opacity-50 sm:flex-row sm:text-lg">
+                                <span>Submit code to see feedback here</span>
+                                <SquareCode className="size-8 sm:size-9" />
+                              </div>
+                            )}
 
                           {messages.map((m, i) => {
-                            if (m.role === 'event') {
+                            if (m.role === "event") {
                               return (
-                                <div key={i} className="divider my-1 text-xs opacity-60">
+                                <div
+                                  key={i}
+                                  className="divider my-1 text-xs opacity-60"
+                                >
                                   {m.text}
                                 </div>
                               );
                             }
 
                             return (
-                              <div key={i} className={m.role === 'student' ? 'chat chat-end' : 'chat chat-start'}>
-                                {m.role === 'assistant' && (
+                              <div
+                                key={i}
+                                className={
+                                  m.role === "student"
+                                    ? "chat chat-end"
+                                    : "chat chat-start"
+                                }
+                              >
+                                {m.role === "assistant" && (
                                   <div className="chat-image avatar">
                                     <div className="w-8 rounded-full bg-primary text-primary-content flex items-center justify-center mr-2">
                                       <Bot size={20} />
@@ -953,21 +1158,32 @@ function App() {
                                   </div>
                                 )}
                                 <div
-                                  className={`chat-bubble max-w-full break-words text-sm shadow-sm ${m.role === 'student' ? 'chat-bubble-neutral' : 'chat-bubble-primary'
-                                    }`}
+                                  className={`chat-bubble max-w-full wrap-break-word text-sm shadow-sm ${
+                                    m.role === "student"
+                                      ? "chat-bubble-neutral"
+                                      : "chat-bubble-primary"
+                                  }`}
                                 >
                                   {m.answer ? (
                                     <div className="space-y-3">
                                       {m.answer.diagnosis && (
                                         <div>
-                                          <div className="mb-1 border-b border-primary-content/20 pb-1 font-bold">What went wrong</div>
-                                          <p className="whitespace-pre-wrap">{m.answer.diagnosis}</p>
+                                          <div className="mb-1 border-b border-primary-content/20 pb-1 font-bold">
+                                            What went wrong
+                                          </div>
+                                          <p className="whitespace-pre-wrap">
+                                            {m.answer.diagnosis}
+                                          </p>
                                         </div>
                                       )}
                                       {m.answer.fix && (
                                         <div>
-                                          <div className="mb-1 border-b border-primary-content/20 pb-1 font-bold">How to fix it</div>
-                                          <p className="whitespace-pre-wrap">{m.answer.fix}</p>
+                                          <div className="mb-1 border-b border-primary-content/20 pb-1 font-bold">
+                                            How to fix it
+                                          </div>
+                                          <p className="whitespace-pre-wrap">
+                                            {m.answer.fix}
+                                          </p>
                                         </div>
                                       )}
                                     </div>
@@ -975,20 +1191,24 @@ function App() {
                                     m.text
                                   )}
                                 </div>
-                                {m.answer && <WhyThisHint explanation={m.explanation} />}
-                                {m.resourceUrl && m.text.includes(m.resourceUrl) && (
-                                  <a
-                                    href={m.resourceUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="chat-footer mt-2 btn btn-sm btn-outline hover:btn-primary gap-2"
-                                  >
-                                    <BookOpen size={14} />
-                                    {m.resourceLabel ?? 'Open learning resource'}
-                                    <ExternalLink size={12} />
-                                  </a>
+                                {m.answer && (
+                                  <WhyThisHint explanation={m.explanation} />
                                 )}
-                                {m.role === 'student' && (
+                                {m.resourceUrl &&
+                                  m.text.includes(m.resourceUrl) && (
+                                    <a
+                                      href={m.resourceUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="chat-footer mt-2 btn btn-sm btn-outline hover:btn-primary gap-2"
+                                    >
+                                      <BookOpen size={14} />
+                                      {m.resourceLabel ??
+                                        "Open learning resource"}
+                                      <ExternalLink size={12} />
+                                    </a>
+                                  )}
+                                {m.role === "student" && (
                                   <div className="chat-image avatar">
                                     <div className="w-8 rounded-full bg-neutral text-neutral-content flex items-center justify-center ml-2">
                                       <UserRound size={20} />
@@ -999,108 +1219,127 @@ function App() {
                             );
                           })}
 
-                          {/* The choice is offered where the student asks for help, so
-                              there is no separate setting to find first. */}
-                          {result?.error && !helpChosen && !isHintLoading && !isLoading && !hasChosenMode && (
-                            <div data-tour="help-choice" className="flex flex-col gap-2">
-                              <p className="text-sm font-medium">How do you want help?</p>
-                              <div className="grid gap-2 sm:grid-cols-2">
+                          {/* Help always starts with a hint. */}
+                          {result?.error &&
+                            !helpChosen &&
+                            !isHintLoading &&
+                            !isLoading && (
+                              <div
+                                data-tour="help-choice"
+                                className="flex flex-col gap-2"
+                              >
                                 <button
                                   type="button"
-                                  className="btn btn-primary h-auto flex-col items-start gap-1 py-3 text-left"
-                                  onClick={chooseHints}
+                                  className="btn btn-primary self-start"
+                                  onClick={handleGetHint}
                                 >
-                                  <span className="flex items-center gap-2 font-semibold">
-                                    <HandHelping size={16} />
-                                    Give me a hint
-                                  </span>
-                                  <span className="text-xs font-normal opacity-80">Step by step, so you find the fix yourself</span>
+                                  <HandHelping size={16} />
+                                  Give me a hint
                                 </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-primary h-auto flex-col items-start gap-1 py-3 text-left"
-                                  onClick={chooseAnswer}
-                                >
-                                  <span className="flex items-center gap-2 font-semibold">
-                                    <Lightbulb size={16} />
-                                    Show me the answer
-                                  </span>
-                                  <span className="text-xs font-normal opacity-80">Explains the error and the fix straight away</span>
-                                </button>
+                                <p className="flex items-center gap-1 text-xs text-base-content/60">
+                                  <Lock size={12} />
+                                  The full answer unlocks once you have had a
+                                  good go at the hints.
+                                </p>
                               </div>
-                            </div>
-                          )}
-
-                          {/* Later runs carry on with the last choice in one click, as the
-                              old toggle did. A new run is when switching is allowed, so the
-                              other mode sits beside it as a button too, with the last
-                              choice first and filled in. */}
-                          {result?.error && !helpChosen && !isHintLoading && !isLoading && hasChosenMode && (
-                            <div data-tour="help-choice" className="flex flex-wrap gap-2">
-                              {isSocratic ? (
-                                <>
-                                  {answerChoiceButton(true)}
-                                  {hintChoiceButton(false)}
-                                </>
-                              ) : (
-                                <>
-                                  {hintChoiceButton(true)}
-                                  {answerChoiceButton(false)}
-                                </>
-                              )}
-                            </div>
-                          )}
+                            )}
 
                           {/* Shown locked rather than hidden, so the student can see the
                               answer exists and how to get to it. */}
-                          {result?.error && hintsInProgress && !isHintLoading && !isLoading && (
-                            <div className="flex flex-wrap items-center gap-2 text-xs text-base-content/60">
-                              <button type="button" className="btn btn-sm btn-outline" disabled>
-                                <Lock size={14} />
-                                Show me the answer
-                              </button>
-                              <span>Run your code again to switch to the answer.</span>
-                            </div>
+                          {result?.error &&
+                            showAnswerOption &&
+                            !isHintLoading &&
+                            !isLoading && (
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-base-content/60">
+                                {answerUnlocked ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-primary"
+                                      onClick={handleGetAnswer}
+                                    >
+                                      <Lightbulb size={14} />
+                                      Show me the answer
+                                    </button>
+                                    <span>
+                                      Nice work getting this far. The answer is
+                                      unlocked if you want it.
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-outline"
+                                      disabled
+                                    >
+                                      <Lock size={14} />
+                                      Show me the answer
+                                    </button>
+                                    <span>
+                                      Keep working through the hints to unlock
+                                      the answer.
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            )}
+
+                          {isHintLoading && (
+                            <p className="text-sm opacity-70">Thinking...</p>
+                          )}
+                          {hintError && (
+                            <p className="text-sm text-error">{hintError}</p>
                           )}
 
-                          {isHintLoading && <p className="text-sm opacity-70">Thinking...</p>}
-                          {hintError && <p className="text-sm text-error">{hintError}</p>}
-
-                          {!isSocratic && isFinalStage && (
+                          {!answeredThisRun && isFinalStage && (
                             <p className="text-xs opacity-60 text-center py-2">
-                              That is the last hint for this error. Fix your code and run it again.
+                              That is the last hint for this error. Fix your
+                              code and run it again.
                             </p>
                           )}
-
                         </div>
 
-                        <div data-tour="chat-input" className="student-chat-composer flex gap-2 bg-base-300 p-2">
+                        <div
+                          data-tour="chat-input"
+                          className="student-chat-composer flex gap-2 bg-base-300 p-2"
+                        >
                           <input
                             type="text"
                             className="input input-md flex-1 bg-base-100 font-medium focus:outline-none focus:border-primary"
                             placeholder={
                               answeredThisRun
-                                ? 'Run your code again to get hints.'
+                                ? "Run your code again to get hints."
                                 : isFinalStage
-                                  ? 'You have reached the last hint.'
-                                  : 'Reply to the assistant...'
+                                  ? "You have reached the last hint."
+                                  : "Reply to the assistant..."
                             }
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
+                              if (e.key === "Enter") {
                                 e.preventDefault();
                                 handleSend();
                               }
                             }}
-                            disabled={currentStage === null || isLoading || isHintLoading || isFinalStage || isSocratic}
+                            disabled={
+                              currentStage === null ||
+                              isLoading ||
+                              isHintLoading ||
+                              isFinalStage ||
+                              answeredThisRun
+                            }
                           />
                           <button
-                            className={`btn btn-primary ${sendDisabled ? 'pointer-events-none cursor-not-allowed' : ''}`}
+                            className={`btn btn-primary ${sendDisabled ? "pointer-events-none cursor-not-allowed" : ""}`}
                             onClick={handleSend}
                             disabled={sendDisabled}
                           >
-                            {isHintLoading ? <span className="loading loading-spinner loading-sm"></span> : 'Send'}
+                            {isHintLoading ? (
+                              <span className="loading loading-spinner loading-sm"></span>
+                            ) : (
+                              "Send"
+                            )}
                             <Send size={16} />
                           </button>
                         </div>
@@ -1118,7 +1357,10 @@ function App() {
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/register" element={<Navigate to="/" replace />} />
       {/* Old setup page, replaced by the session history. */}
-      <Route path="/student/setup" element={<Navigate to="/student/sessions" replace />} />
+      <Route
+        path="/student/setup"
+        element={<Navigate to="/student/sessions" replace />}
+      />
       {/* The student's saved sessions. Only for logged-in students. */}
       <Route
         path="/student/sessions"

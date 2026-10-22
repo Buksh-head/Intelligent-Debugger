@@ -4,19 +4,34 @@ Orchestrates the static analysis engine, sandboxed execution, and
 hint generation service described in the project's C4 diagram
 (spec/statement_of_work.md). Route definitions live in app.routers.
 """
+
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import analysis, execution, generation, instructor, analytics, insights, data_deletion, student_login, student_sessions
+from app.routers import (
+    analysis,
+    execution,
+    generation,
+    instructor,
+    analytics,
+    insights,
+    data_deletion,
+    student_login,
+    student_sessions,
+)
 
 app = FastAPI(title="Error Guide API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://intelligent-debugger.vercel.app"],  # Vite dev server
+    allow_origins=[
+        "http://localhost:5173",
+        "https://intelligent-debugger.vercel.app",
+    ],  # Vite dev server
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -32,6 +47,7 @@ app.include_router(data_deletion.router)
 app.include_router(insights.router)
 app.include_router(student_login.router)
 app.include_router(student_sessions.router)
+
 
 @app.get("/health")
 def health() -> dict:

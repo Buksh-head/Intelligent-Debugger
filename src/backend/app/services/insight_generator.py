@@ -1,4 +1,4 @@
-""" Instructor Insights Generator (Issue #119)
+"""Instructor Insights Generator (Issue #119)
 
 Accepts data from concepts / error type analytics,
 generates instructor insights using an LLM.
@@ -7,6 +7,7 @@ generates instructor insights using an LLM.
 import os
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from openai import OpenAI
@@ -29,6 +30,7 @@ SYSTEM_PROMPT = """You are an experienced instructor specialising in teaching fo
 
 _client: OpenAI | None = None
 
+
 def _get_client() -> OpenAI:
     global _client
     if _client is None:
@@ -40,11 +42,10 @@ def _get_client() -> OpenAI:
     return _client
 
 
-
-def generate_insights(stats:InsightStats, model:str = "qwen/qwen3.8-27b"):
+def generate_insights(stats: InsightStats, model: str = "qwen/qwen3.8-27b"):
     """Function to generate insights for instructors, specific to the error type.
-       InsightStats accepted as an input, with output being the response from the LLM.
-       """
+    InsightStats accepted as an input, with output being the response from the LLM.
+    """
 
     client = _get_client()
 
@@ -54,13 +55,13 @@ def generate_insights(stats:InsightStats, model:str = "qwen/qwen3.8-27b"):
                     Statistics: \n{stats.model_dump_json(indent=2, exclude={'error_type', 'data_window'})}
                     """
     messages = [
-        {"role":"system", "content":SYSTEM_PROMPT},
-        {"role":"user", "content":user_prompt},
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt},
     ]
 
     response = client.chat.completions.create(
         model=model,
-        messages=messages, 
+        messages=messages,
         max_tokens=200,
         temperature=0,
     )

@@ -31,23 +31,23 @@ export interface Finding {
 export interface HintStage {
   stage: number;
   text: string | null;
-  intent: string | null;          // how the classifier read the student's reply
-  advanced_softly: boolean;       // moved on after vague replies rather than a real answer
-  resource_url: string | null;    // curated link, present while a resource is active
-  resource_label: string | null;  // its title, e.g. "Dictionaries in Python"
-  gate_on_url: boolean;           // true while the student still owes the check answer
+  intent: string | null; // how the classifier read the student's reply
+  advanced_softly: boolean; // moved on after vague replies rather than a real answer
+  resource_url: string | null; // curated link, present while a resource is active
+  resource_label: string | null; // its title, e.g. "Dictionaries in Python"
+  gate_on_url: boolean; // true while the student still owes the check answer
 }
 
-export type FeedbackMode = 'hints' | 'socratic';
+export type FeedbackMode = "hints" | "socratic";
 
 export interface SocraticAnswer {
-  diagnosis: string | null;  // what the code does and why it fails
-  fix: string | null;        // the change that resolves it, may contain code
+  diagnosis: string | null; // what the code does and why it fails
+  fix: string | null; // the change that resolves it, may contain code
 }
 
 export interface Attribution {
   feature: string;
-  label: string;   // the only part a student sees
+  label: string; // the only part a student sees
   weight: number;
 }
 
@@ -64,20 +64,20 @@ export interface HintResponse {
   status: string;
   execution: ExecutionResponse;
   finding: Finding;
-  hints: HintStage[];              // empty in socratic mode
-  answer: SocraticAnswer | null;   // only set in socratic mode
+  hints: HintStage[]; // empty in socratic mode
+  answer: SocraticAnswer | null; // only set in socratic mode
   explanation?: Explanation | null; // only set in socratic mode
 }
 
 // One message in the Student View chat.
 export type ChatMessage = {
-  role: 'student' | 'assistant' | 'event'; // 'event' marks a resubmission within the chat
+  role: "student" | "assistant" | "event"; // 'event' marks a resubmission within the chat
   text: string;
   stage?: number;
-  resourceUrl?: string | null;   // link from the curated list, if this message offers one
+  resourceUrl?: string | null; // link from the curated list, if this message offers one
   resourceLabel?: string | null; // the link's title
-  gated?: boolean;               // true while the student still owes the check answer
-  answer?: SocraticAnswer;       // set on a socratic-mode reply, rendered as diagnosis and fix
+  gated?: boolean; // true while the student still owes the check answer
+  answer?: SocraticAnswer; // set on a socratic-mode reply, rendered as diagnosis and fix
   explanation?: Explanation | null; // how the system reached that answer
 };
 
@@ -85,8 +85,8 @@ export type ChatMessage = {
 // ChatMessage field except role.
 export interface ChatMessageRecord {
   position: number;
-  role: ChatMessage['role'];
-  body: Omit<ChatMessage, 'role'>;
+  role: ChatMessage["role"];
+  body: Omit<ChatMessage, "role">;
 }
 
 // One row of the student's session history.
@@ -159,4 +159,5 @@ export interface InsightsResponse {
 }
 
 // The semester option is hardcoded and will need updating each semester.
-export type AnalyticsDateRange = 'today' | 'last_7_days' | 'last_month' | 'semester_2_2026';
+export type AnalyticsDateRange =
+  "today" | "last_7_days" | "last_month" | "semester_2_2026";

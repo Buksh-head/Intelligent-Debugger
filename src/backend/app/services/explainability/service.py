@@ -3,13 +3,19 @@
 Built lazily and once. Any failure returns None so the answer still ships;
 nothing here may raise into the request path.
 """
+
 import logging
 import threading
 from pathlib import Path
 
 from app.models import Attribution, Explanation
 
-from .classifier import MisconceptionClassifier, build_feature_frame, load_dataset, load_pipeline
+from .classifier import (
+    MisconceptionClassifier,
+    build_feature_frame,
+    load_dataset,
+    load_pipeline,
+)
 from .explainer import AttributionExplainer
 
 logger = logging.getLogger(__name__)
@@ -40,7 +46,9 @@ class ExplanationService:
         if self._counterfactuals is None:
             from .counterfactual import CounterfactualExplainer
 
-            self._counterfactuals = CounterfactualExplainer(self._pipeline, background=self._background)
+            self._counterfactuals = CounterfactualExplainer(
+                self._pipeline, background=self._background
+            )
         return self._counterfactuals
 
     def explain(

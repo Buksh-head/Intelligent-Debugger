@@ -2,6 +2,7 @@
 current debugging stage, so the backend knows whether to advance, hold,
 provide a resource or soft-advance the stage (see issues #11, #60).
 """
+
 from enum import IntEnum
 from typing import Literal, NamedTuple
 import logging
@@ -13,7 +14,7 @@ import os
 logger = logging.getLogger(__name__)
 
 # Number of vague replies in a row at the same stage, before soft-advancing
-MAX_VAGUE_ATTEMPTS = 2  
+MAX_VAGUE_ATTEMPTS = 2
 # Number of incorrect replies in a row at the same stage, before escalating
 MAX_INCORRECT_ATTEMPTS = 3
 
@@ -22,6 +23,7 @@ class Stage(IntEnum):
     """
     Current Stage the student is on
     """
+
     NOTICE = 1
     UNDERSTAND = 2
     LOCATE = 3
@@ -34,6 +36,7 @@ class ClassificationResult(BaseModel):
     The classification of the student's response by the LLM
     Contains the classified intent and the student's raw response
     """
+
     intent: str
     raw_response: str
 
@@ -42,6 +45,7 @@ class StageDecision(NamedTuple):
     """Returned by resolve_next_stage. A NamedTuple rather than a bare
     tuple so adding a field later doesn't silently break call sites that
     unpack positionally."""
+
     next_stage: int
     next_vague_attempts: int
     advanced: bool
@@ -53,8 +57,8 @@ class StageDecision(NamedTuple):
 # The type of intention classifications that the model can classify the student's response into
 INTENT = Literal[
     "genuinely_completed",
-    "incorrect_answer",    
-    "non_answer",          
+    "incorrect_answer",
+    "non_answer",
     "vague_affirmation",
     "asking_analogy",
     "asking_question",
@@ -77,6 +81,7 @@ _client: OpenAI | None = None
 VALID_INTENTS = set(INTENT.__args__)
 GATE_INTENTS = {"reviewed_resource", "skipped_resource"}
 
+
 def _get_client() -> OpenAI:
     """Lazily construct the client so importing this module (e.g. for unit
     tests of resolve_next_stage) never requires credentials to be present."""
@@ -90,6 +95,7 @@ def _get_client() -> OpenAI:
         )
     return _client
 
+
 def _gate_prompt(student_message: str, check_prompt: str) -> str:
     """
     Gives the prompt for gating the student at a stage when a resource has been supplied.
@@ -98,7 +104,7 @@ def _gate_prompt(student_message: str, check_prompt: str) -> str:
     ----------
     student_message: str
         The response provided by the student
-    
+
     check_prompt: str
         The question to ask the student to check if they understand the concept in the resource provided
 
@@ -128,7 +134,7 @@ def _stage_prompt(
 ) -> str:
     """
     Gives the prompt for classifying the student's response at every stage.
- 
+
     Parameters
     ----------
     student_message: str
@@ -141,7 +147,7 @@ def _stage_prompt(
         The error message that the student is debugging
     code_snippet: str
         The code snippet that the student is debugging
- 
+
     Returns
     --------
     str: The prompt
@@ -178,6 +184,7 @@ def _stage_prompt(
             
             One label, nothing else."""
 
+
 def classify_student_message(
     student_message: str,
     stage_task: str,
@@ -194,7 +201,7 @@ def classify_student_message(
         stage_task: the specific task the student was asked to do this stage
         pending_check_prompt: if a resource was offered, the check prompt to classify against
         model: the model to use for classification
-        
+
     Returns:
         ClassificationResult: the classification result, including the intent and raw response
     """
@@ -202,7 +209,9 @@ def classify_student_message(
     prompt = (
         _gate_prompt(student_message, pending_check_prompt)
         if gated
-        else _stage_prompt(student_message, stage_task, error_type, error_message, code_snippet)
+        else _stage_prompt(
+            student_message, stage_task, error_type, error_message, code_snippet
+        )
     )
 
     # API call to the LLM model to classify a student's message
@@ -244,7 +253,7 @@ def resolve_next_stage(
     has_pending_resource: bool = False,
 ) -> StageDecision:
     """Given current state and this turn's classification, determine the next state of the hint system.
-    
+
     Parameters:
         current_stage: the current stage of the hint system (1-5)
         vague_attempts_this_stage: the number of vague attempts made at the current stage
@@ -262,23 +271,48 @@ def resolve_next_stage(
         if intent == "reviewed_resource":
             # Gate opens, stage does NOT advance: reading about a concept
             # is not the same as completing the stage's task.
-            return StageDecision(current_stage, 0, False, False, True, incorrect_attempts_this_stage)
+            return StageDecision(
+                current_stage, 0, False, False, True, incorrect_attempts_this_stage
+            )
 
         if intent == "skipped_resource":
             next_vague = vague_attempts_this_stage + 1
             if next_vague >= MAX_VAGUE_ATTEMPTS:
-                return StageDecision(current_stage, 0, False, True, True, incorrect_attempts_this_stage)
-            return StageDecision(current_stage, next_vague, False, False, False, incorrect_attempts_this_stage)
+                return StageDecision(
+                    current_stage, 0, False, True, True, incorrect_attempts_this_stage
+                )
+            return StageDecision(
+                current_stage,
+                next_vague,
+                False,
+                False,
+                False,
+                incorrect_attempts_this_stage,
+            )
 
         # asking_question / off_topic: hold, counters untouched.
-        return StageDecision(current_stage, vague_attempts_this_stage, False, False, False, incorrect_attempts_this_stage)
+        return StageDecision(
+            current_stage,
+            vague_attempts_this_stage,
+            False,
+            False,
+            False,
+            incorrect_attempts_this_stage,
+        )
 
     # The stage increment based off classification
     if intent in ("vague_affirmation", "non_answer"):
         next_vague = vague_attempts_this_stage + 1
         if next_vague >= MAX_VAGUE_ATTEMPTS and current_stage < Stage.REDIRECT:
             return StageDecision(current_stage + 1, 0, True, True, False, 0)
-        return StageDecision(current_stage, next_vague, False, False, False, incorrect_attempts_this_stage)
+        return StageDecision(
+            current_stage,
+            next_vague,
+            False,
+            False,
+            False,
+            incorrect_attempts_this_stage,
+        )
 
     if intent == "incorrect_answer":
         next_incorrect = incorrect_attempts_this_stage + 1
@@ -286,12 +320,28 @@ def resolve_next_stage(
             # Move on rather than trapping them after three incorrect attempts.
             # The tutor is told to correct the misconception on the way out.
             return StageDecision(current_stage + 1, 0, True, True, False, 0)
-        return StageDecision(current_stage, vague_attempts_this_stage, False, False, False, next_incorrect)
+        return StageDecision(
+            current_stage,
+            vague_attempts_this_stage,
+            False,
+            False,
+            False,
+            next_incorrect,
+        )
 
     if intent == "genuinely_completed":
         if current_stage < Stage.REDIRECT:
             return StageDecision(current_stage + 1, 0, True, False, False, 0)
-        return StageDecision(current_stage, 0, False, False, False, incorrect_attempts_this_stage)
+        return StageDecision(
+            current_stage, 0, False, False, False, incorrect_attempts_this_stage
+        )
 
     # asking_analogy / asking_question / off_topic: hold, counters untouched.
-    return StageDecision(current_stage, vague_attempts_this_stage, False, False, False, incorrect_attempts_this_stage)
+    return StageDecision(
+        current_stage,
+        vague_attempts_this_stage,
+        False,
+        False,
+        False,
+        incorrect_attempts_this_stage,
+    )

@@ -4,6 +4,7 @@ Only some features may vary, booleans are categorical, and templates exist
 only for removing a trait, never adding one, so a question can't suggest
 introducing a bug. Below the confidence gate nothing renders.
 """
+
 import contextlib
 import io
 import logging
@@ -27,10 +28,19 @@ CONFIDENCE_GATE = 0.55
 
 # Yes/no facts about the code. Categorical, so DiCE proposes flips rather
 # than fractions.
-BOOLEAN_FEATURES = ["has_subscript", "has_division", "mutates_during_iteration", "parse_failed"]
+BOOLEAN_FEATURES = [
+    "has_subscript",
+    "has_division",
+    "mutates_during_iteration",
+    "parse_failed",
+]
 
 COUNT_FEATURES = [
-    "total_lines", "num_loops", "max_loop_depth", "num_conditionals", "num_function_defs",
+    "total_lines",
+    "num_loops",
+    "max_loop_depth",
+    "num_conditionals",
+    "num_function_defs",
 ]
 
 CONTINUOUS_FEATURES = [*COUNT_FEATURES, "line_number_ratio"]
@@ -66,22 +76,34 @@ ALL_FEATURES = [*CONTINUOUS_FEATURES, *BOOLEAN_FEATURES]
 # (feature, direction) -> question. Only "decrease" exists: these describe
 # a program with *less* of a trait, never one with more.
 QUESTION_TEMPLATES = {
-    ("mutates_during_iteration", "decrease"):
-        "What would be different about this loop if the list stayed the same "
-        "length the whole way through it?",
-    ("max_loop_depth", "decrease"):
-        "What would have to be true for the inner loop to finish on its own?",
-    ("num_loops", "decrease"):
-        "Which part of this repetition is doing work that has already been done?",
-    ("has_subscript", "decrease"):
-        "What would change if you reached each item directly, rather than by "
-        "its position?",
-    ("has_division", "decrease"):
-        "What would you want to know about the number you are dividing by, "
-        "before dividing by it?",
-    ("num_conditionals", "decrease"):
-        "Which of these conditions can already be ruled out by the time the "
-        "program reaches them?",
+    (
+        "mutates_during_iteration",
+        "decrease",
+    ): "What would be different about this loop if the list stayed the same "
+    "length the whole way through it?",
+    (
+        "max_loop_depth",
+        "decrease",
+    ): "What would have to be true for the inner loop to finish on its own?",
+    (
+        "num_loops",
+        "decrease",
+    ): "Which part of this repetition is doing work that has already been done?",
+    (
+        "has_subscript",
+        "decrease",
+    ): "What would change if you reached each item directly, rather than by "
+    "its position?",
+    (
+        "has_division",
+        "decrease",
+    ): "What would you want to know about the number you are dividing by, "
+    "before dividing by it?",
+    (
+        "num_conditionals",
+        "decrease",
+    ): "Which of these conditions can already be ruled out by the time the "
+    "program reaches them?",
 }
 
 TOTAL_CANDIDATES = 5
@@ -108,7 +130,9 @@ class CounterfactualExplainer:
         return out
 
     @staticmethod
-    def _restore_context(frame: pd.DataFrame, error_type: str, message: str) -> pd.DataFrame:
+    def _restore_context(
+        frame: pd.DataFrame, error_type: str, message: str
+    ) -> pd.DataFrame:
         restored = frame[ALL_FEATURES].copy()
         for column in BOOLEAN_FEATURES:
             restored[column] = restored[column].astype(int).astype(bool)
@@ -218,7 +242,9 @@ class CounterfactualExplainer:
                 contextlib.redirect_stdout(io.StringIO()),
                 contextlib.redirect_stderr(io.StringIO()),
             ):
-                results = Dice(dice_data, dice_model, method="random").generate_counterfactuals(
+                results = Dice(
+                    dice_data, dice_model, method="random"
+                ).generate_counterfactuals(
                     query,
                     total_CFs=TOTAL_CANDIDATES,
                     desired_class="opposite",
@@ -235,7 +261,9 @@ class CounterfactualExplainer:
             # thing DiCE gives us to a single reason.
             ordered = sorted(
                 (candidates.iloc[i] for i in range(len(candidates))),
-                key=lambda cf: sum(str(original[f]) != str(cf[f]) for f in FEATURES_TO_VARY),
+                key=lambda cf: sum(
+                    str(original[f]) != str(cf[f]) for f in FEATURES_TO_VARY
+                ),
             )
             for candidate in ordered:
                 if question := self._render(original, candidate):
@@ -249,5 +277,7 @@ class CounterfactualExplainer:
             logger.debug(f"No counterfactual within range for error_type={error_type}")
             return None
         except Exception as e:
-            logger.error(f"Counterfactual generation failed for error_type={error_type}: {e}")
+            logger.error(
+                f"Counterfactual generation failed for error_type={error_type}: {e}"
+            )
             return None

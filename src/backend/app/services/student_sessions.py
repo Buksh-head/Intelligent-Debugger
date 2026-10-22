@@ -7,6 +7,7 @@ apart.
 
 Table definitions are in app.db_models.
 """
+
 from datetime import datetime, timezone
 
 from sqlalchemy import text
@@ -72,7 +73,9 @@ def owned_session(
     return session.exec(query).first()
 
 
-def create_session(*, username: str, session_id: str, course: str | None, language: str | None) -> bool:
+def create_session(
+    *, username: str, session_id: str, course: str | None, language: str | None
+) -> bool:
     """Record a new session for the student.
 
     Returns False if the ID is already taken by another student. Registering
@@ -84,7 +87,11 @@ def create_session(*, username: str, session_id: str, course: str | None, langua
         if existing is not None:
             return existing.username == username
 
-        session.add(StudentSession(id=session_id, username=username, course=course, language=language))
+        session.add(
+            StudentSession(
+                id=session_id, username=username, course=course, language=language
+            )
+        )
         session.commit()
         return True
 
@@ -114,7 +121,10 @@ def get_session(username: str, session_id: str) -> dict | None:
             "language": owned.language,
             "code": owned.code,
             "last_execution": owned.last_execution,
-            "messages": [{"position": m.position, "role": m.role, "body": m.body} for m in messages],
+            "messages": [
+                {"position": m.position, "role": m.role, "body": m.body}
+                for m in messages
+            ],
         }
 
 
@@ -155,7 +165,9 @@ def delete_session(username: str, session_id: str) -> bool:
         if owned is None:
             return False
 
-        session.execute(text("SELECT delete_session_data(:session_id)"), {"session_id": session_id})
+        session.execute(
+            text("SELECT delete_session_data(:session_id)"), {"session_id": session_id}
+        )
         session.delete(owned)
         # Without this commit the deletion is rolled back when the Session closes.
         session.commit()
@@ -179,7 +191,9 @@ def rename_session(username: str, session_id: str, title: str | None) -> bool:
         return True
 
 
-def save_state(username: str, session_id: str, *, code: str, last_execution: dict | None) -> bool:
+def save_state(
+    username: str, session_id: str, *, code: str, last_execution: dict | None
+) -> bool:
     """Save the editor code and latest run result.
 
     Returns False if the session isn't the student's.

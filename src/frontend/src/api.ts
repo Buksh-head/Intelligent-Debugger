@@ -1,7 +1,7 @@
 // API client for the FastAPI backend (src/backend). Types live in ./types.
 
-import axios from 'axios';
-import { supabase } from './lib/supabaseClient';
+import axios from "axios";
+import { supabase } from "./lib/supabaseClient";
 import type {
   AnalyticsResponse,
   AnalyticsDateRange,
@@ -13,11 +13,11 @@ import type {
   InsightsResponse,
   StudentSessionDetail,
   StudentSessionSummary,
-} from './types';
+} from "./types";
 
 // Backend address. Empty by default, so calls go to /api on the same site
 // and the Vite proxy forwards them to the backend.
-const API_URL = import.meta.env.VITE_API_URL ?? '';
+const API_URL = import.meta.env.VITE_API_URL ?? "";
 
 // These small typed wrappers keep request details in one place and make
 // backend responses available to the React components with checked types.
@@ -28,31 +28,35 @@ export async function executeCode(
   language?: string,
   sessionId?: string,
 ): Promise<ExecutionResponse> {
-  const response = await axios.post<ExecutionResponse>(`${API_URL}/api/execute`, {
-    code,
-    course,
-    language,
-    session_id: sessionId,
-  });
+  const response = await axios.post<ExecutionResponse>(
+    `${API_URL}/api/execute`,
+    {
+      code,
+      course,
+      language,
+      session_id: sessionId,
+    },
+  );
   return response.data;
 }
 
-// Gets the next hint, or the full answer in socratic mode.                   
-// Send the student's reply and the last hint so the backend                  
-// can decide whether to move to the next stage.   
+// Gets the next hint, or the full answer in socratic mode.
+// Send the student's reply and the last hint so the backend
+// can decide whether to move to the next stage.
 export async function getHint(
   errorId: number,
   finding: Finding,
   execution: ExecutionResponse,
-  studentMessage = '',
-  previousHint = '',
-  mode: FeedbackMode = 'hints',
+  studentMessage = "",
+  previousHint = "",
+  mode: FeedbackMode = "hints",
 ): Promise<HintResponse> {
   const response = await axios.post<HintResponse>(
     `${API_URL}/api/hints`,
     {
       error_id: errorId,
-      finding, execution,
+      finding,
+      execution,
       student_message: studentMessage,
       previous_hint: previousHint,
       mode,
@@ -65,10 +69,16 @@ export async function getHint(
 }
 
 // Gets error stats for the instructor dashboard, by date range and course.
-export async function getCohortAnalytics(dateRange: AnalyticsDateRange, course?: string): Promise<AnalyticsResponse> {
-  const response = await axios.get<AnalyticsResponse>(`${API_URL}/api/analytics/cohort`, {
-    params: { date_range: dateRange, course },
-  });
+export async function getCohortAnalytics(
+  dateRange: AnalyticsDateRange,
+  course?: string,
+): Promise<AnalyticsResponse> {
+  const response = await axios.get<AnalyticsResponse>(
+    `${API_URL}/api/analytics/cohort`,
+    {
+      params: { date_range: dateRange, course },
+    },
+  );
   return response.data;
 }
 
@@ -98,7 +108,11 @@ const studentSessionUrl = (sessionId: string) =>
   `${API_URL}/api/student/sessions/${encodeURIComponent(sessionId)}`;
 
 // Records a new session against the logged-in student. Safe to repeat.
-export async function createStudentSession(sessionId: string, course: string, language: string): Promise<void> {
+export async function createStudentSession(
+  sessionId: string,
+  course: string,
+  language: string,
+): Promise<void> {
   await axios.post(
     `${API_URL}/api/student/sessions`,
     { id: sessionId, course: course || null, language: language || null },
@@ -108,18 +122,26 @@ export async function createStudentSession(sessionId: string, course: string, la
 
 // The logged-in student's sessions, most recently used first.
 export async function listStudentSessions(): Promise<StudentSessionSummary[]> {
-  const response = await axios.get<StudentSessionSummary[]>(`${API_URL}/api/student/sessions`, {
-    headers: await authHeaders(),
-  });
+  const response = await axios.get<StudentSessionSummary[]>(
+    `${API_URL}/api/student/sessions`,
+    {
+      headers: await authHeaders(),
+    },
+  );
   return response.data;
 }
 
 // Loads a saved session, or null if the student has none with this ID.
-export async function getStudentSession(sessionId: string): Promise<StudentSessionDetail | null> {
+export async function getStudentSession(
+  sessionId: string,
+): Promise<StudentSessionDetail | null> {
   try {
-    const response = await axios.get<StudentSessionDetail>(studentSessionUrl(sessionId), {
-      headers: await authHeaders(),
-    });
+    const response = await axios.get<StudentSessionDetail>(
+      studentSessionUrl(sessionId),
+      {
+        headers: await authHeaders(),
+      },
+    );
     return response.data;
   } catch (err) {
     if (axios.isAxiosError(err) && err.response?.status === 404) return null;
@@ -128,8 +150,15 @@ export async function getStudentSession(sessionId: string): Promise<StudentSessi
 }
 
 // Saves chat messages. Positions already saved are skipped by the backend.
-export async function appendChatMessages(sessionId: string, messages: ChatMessageRecord[]): Promise<void> {
-  await axios.post(`${studentSessionUrl(sessionId)}/messages`, { messages }, { headers: await authHeaders() });
+export async function appendChatMessages(
+  sessionId: string,
+  messages: ChatMessageRecord[],
+): Promise<void> {
+  await axios.post(
+    `${studentSessionUrl(sessionId)}/messages`,
+    { messages },
+    { headers: await authHeaders() },
+  );
 }
 
 // Saves the editor code and the latest run result.
@@ -147,13 +176,22 @@ export async function saveSessionState(
 
 // Renames one of the logged-in student's sessions. A blank title goes back
 // to the default name. Fails with a 404 if the session isn't the student's.
-export async function renameStudentSession(sessionId: string, title: string): Promise<void> {
-  await axios.patch(studentSessionUrl(sessionId), { title }, { headers: await authHeaders() });
+export async function renameStudentSession(
+  sessionId: string,
+  title: string,
+): Promise<void> {
+  await axios.patch(
+    studentSessionUrl(sessionId),
+    { title },
+    { headers: await authHeaders() },
+  );
 }
 
 // Deletes everything stored for one of the logged-in student's sessions,
 // including its chat. The backend keeps only anonymous daily counts for the
 // instructor dashboard. Fails with a 404 if the session isn't the student's.
 export async function deleteStudentData(sessionId: string): Promise<void> {
-  await axios.delete(studentSessionUrl(sessionId), { headers: await authHeaders() });
+  await axios.delete(studentSessionUrl(sessionId), {
+    headers: await authHeaders(),
+  });
 }

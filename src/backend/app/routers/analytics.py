@@ -86,8 +86,7 @@ def get_cohort_analytics(
     def fetch_counts():
         with Session(engine) as session:
             return session.execute(
-                text(
-                    f"""
+                text(f"""
                     SELECT
                         (
                             SELECT COALESCE(SUM(c.submission_count), 0)::bigint
@@ -99,8 +98,7 @@ def get_cohort_analytics(
                             FROM error_counts c
                             WHERE c.day >= :since{course_filter}
                         ) AS error_count
-                    """
-                ),
+                    """),
                 params,
             ).one()
 
@@ -109,8 +107,7 @@ def get_cohort_analytics(
     def fetch_concepts():
         with Session(engine) as session:
             return session.execute(
-                text(
-                    """
+                text("""
                     SELECT
                         COALESCE(
                             NULLIF(TRIM(c.error_type), ''),
@@ -121,8 +118,7 @@ def get_cohort_analytics(
                     WHERE c.day >= :since{course_filter}
                     GROUP BY 1
                     ORDER BY count DESC, name
-                    """.format(course_filter=course_filter)
-                ),
+                    """.format(course_filter=course_filter)),
                 params,
             ).all()
 
@@ -131,8 +127,7 @@ def get_cohort_analytics(
     def fetch_recurring():
         with Session(engine) as session:
             return session.execute(
-                text(
-                    """
+                text("""
                     SELECT
                         COALESCE(c.message, c.error_type) AS label,
                         SUM(c.error_count)::bigint AS count
@@ -141,8 +136,7 @@ def get_cohort_analytics(
                     GROUP BY 1
                     ORDER BY count DESC, label
                     LIMIT 10
-                    """.format(course_filter=course_filter)
-                ),
+                    """.format(course_filter=course_filter)),
                 params,
             ).all()
 
@@ -151,8 +145,7 @@ def get_cohort_analytics(
     def fetch_details():
         with Session(engine) as session:
             return session.execute(
-                text(
-                    """
+                text("""
                     SELECT
                         COALESCE(
                             NULLIF(TRIM(c.error_type), ''),
@@ -164,8 +157,7 @@ def get_cohort_analytics(
                     WHERE c.day >= :since{course_filter}
                     GROUP BY 1, 2
                     ORDER BY 1, count DESC, 2
-                    """.format(course_filter=course_filter)
-                ),
+                    """.format(course_filter=course_filter)),
                 params,
             ).all()
 
@@ -174,8 +166,7 @@ def get_cohort_analytics(
     def fetch_chart():
         with Session(engine) as session:
             return session.execute(
-                text(
-                    """
+                text("""
                     SELECT
                         COALESCE(
                             NULLIF(TRIM(c.error_type), ''),
@@ -188,8 +179,7 @@ def get_cohort_analytics(
                     WHERE c.day >= :since{course_filter}
                     GROUP BY 1, 2, 4
                     ORDER BY 1, 4
-                    """.format(course_filter=course_filter)
-                ),
+                    """.format(course_filter=course_filter)),
                 params,
             ).all()
 
@@ -198,8 +188,7 @@ def get_cohort_analytics(
     def fetch_outcomes():
         with Session(engine) as session:
             return session.execute(
-                text(
-                    """
+                text("""
                     SELECT
                         COALESCE(
                             NULLIF(TRIM(c.error_type), ''),
@@ -217,8 +206,7 @@ def get_cohort_analytics(
                     FROM error_counts c
                     WHERE c.day >= :since{course_filter}
                     GROUP BY 1
-                    """.format(course_filter=course_filter)
-                ),
+                    """.format(course_filter=course_filter)),
                 params,
             ).all()
 

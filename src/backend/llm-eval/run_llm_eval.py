@@ -21,6 +21,7 @@ Defaults are deliberately small. A 200k daily budget is roughly 290 turns,
 and a 7000 input-tokens-per-minute ceiling is roughly 6 turns per minute -
 so anything over ~5 turns needs --delay 12.
 """
+
 import argparse
 import json
 import os
@@ -32,6 +33,7 @@ from pathlib import Path
 import sys
 
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).resolve().parents[3] / "deployment" / ".env")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -47,7 +49,6 @@ from app.services.stage_classifier import (
     Stage,
 )
 from app.services.learning_resources import detect_concept, get_resource
-
 
 # Measured from real runs (~690 tokens/turn); used only for the estimate.
 TOKENS_PER_TURN = 700
@@ -90,8 +91,23 @@ SCENARIOS: dict[str, list[str]] = {
     # exits via MAX_INCORRECT_ATTEMPTS (3) or MAX_VAGUE_ATTEMPTS (2) when
     # the classifier reads a bare number as a non_answer. Twelve replies is
     # enough slack for either path across four transitions.
-    "full_ladder": ["2", "4", "6", "8", "10", "12", "14", "16", "18",
-                    "20", "22", "24", "26", "28", "30"],
+    "full_ladder": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14",
+        "16",
+        "18",
+        "20",
+        "22",
+        "24",
+        "26",
+        "28",
+        "30",
+    ],
 }
 
 # Which error types a scenario's replies make sense for. None = any error.
@@ -110,8 +126,16 @@ SCENARIO_ERRORS: dict[str, set[str] | None] = {
 # ---------------------------------------------------------------------------
 
 NUM_WORDS = {
-    "0": "zero", "1": "one", "2": "two", "3": "three", "4": "four",
-    "5": "five", "6": "six", "7": "seven", "8": "eight", "9": "nine",
+    "0": "zero",
+    "1": "one",
+    "2": "two",
+    "3": "three",
+    "4": "four",
+    "5": "five",
+    "6": "six",
+    "7": "seven",
+    "8": "eight",
+    "9": "nine",
     "10": "ten",
 }
 
@@ -145,13 +169,13 @@ _DETERMINER_ONE = re.compile(
 
 # Any code at all is forbidden at every stage.
 _CODE = re.compile(
-    r"```"                                        # fenced block
-    r"|`[^`]*[=()\[\]/+*][^`]*`"                  # backticks with an expression, not a bare `item`
-    r"|\b(print|input|int|str|len|range)\s*\("    # builtin call
-    r"|\bdef\s+\w+\s*\("                          # def
-    r"|\b(if|while|for)\b[^.?!]*:\s*$"            # block header
-    r"|\b\w+\s*=\s*[\w\"'\[]"                     # assignment
-    r"|[\w\)]\s*/\s*[\w\(]",                      # division expression
+    r"```"  # fenced block
+    r"|`[^`]*[=()\[\]/+*][^`]*`"  # backticks with an expression, not a bare `item`
+    r"|\b(print|input|int|str|len|range)\s*\("  # builtin call
+    r"|\bdef\s+\w+\s*\("  # def
+    r"|\b(if|while|for)\b[^.?!]*:\s*$"  # block header
+    r"|\b\w+\s*=\s*[\w\"'\[]"  # assignment
+    r"|[\w\)]\s*/\s*[\w\(]",  # division expression
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -171,17 +195,23 @@ _REFUSAL = re.compile(
     r"|\b(paste|share|send|provide|upload|show me)\b[^.?!]*"
     r"\b(code|file|error message|program|script|snippet)\b"
     r"|\bi need (the|your)\b[^.?!]*\b(code|error|file|program)\b",
-    re.IGNORECASE)
+    re.IGNORECASE,
+)
 
 _URL = re.compile(r"https?://\S+", re.IGNORECASE)
 
+
 def check_code(hint: str):
-    m = _CODE.search(_URL.sub(" ", hint or ""))     # strip URLs first
+    m = _CODE.search(_URL.sub(" ", hint or ""))  # strip URLs first
     return [("CODE", (hint or "").strip(), [m.group(0).strip()])] if m else []
+
 
 _ANALOGY = re.compile(
     r"\b(think of it (like|as)|imagine|picture it|it'?s like|like a |"
-    r"if (a|an|the)\b[^.?!]*\bwere\b|as if|similar to a)\b", re.IGNORECASE)
+    r"if (a|an|the)\b[^.?!]*\bwere\b|as if|similar to a)\b",
+    re.IGNORECASE,
+)
+
 
 def check_analogy(hint: str, intent: str):
     if intent == "asking_analogy":
@@ -196,6 +226,7 @@ def check_refusal(hint: str):
     Applies at every stage."""
     m = _REFUSAL.search(hint or "")
     return [("REFUSAL", (hint or "").strip(), [m.group(0).strip()[:40]])] if m else []
+
 
 def check_line_echo(hint: str, student_message: str, line_number):
     """The model keeps reading a numeric student reply as a line reference.
@@ -249,8 +280,11 @@ def check_leak(hint: str, code_snippet: str, stage: int):
     scrubbed = [_scrub(s) for s in originals]
 
     def hits_in(text):
-        return sorted(t for t in value_terms
-                      if re.search(rf"\b{re.escape(t)}\b", text, re.IGNORECASE))
+        return sorted(
+            t
+            for t in value_terms
+            if re.search(rf"\b{re.escape(t)}\b", text, re.IGNORECASE)
+        )
 
     findings = []
     # Index-aligned: judge the scrubbed copy, report the original. Questions
@@ -271,13 +305,15 @@ def check_leak(hint: str, code_snippet: str, stage: int):
     # sentence doing both. A pointing QUESTION is the legitimate shape, so
     # both halves must be assertions.
     if not any(sev == "LEAK" for sev, _, _ in findings):
-        decl = [(o, s) for o, s in zip(originals, scrubbed)
-                if o and not o.endswith("?")]
+        decl = [
+            (o, s) for o, s in zip(originals, scrubbed) if o and not o.endswith("?")
+        ]
         valued = [(o, s) for o, s in decl if hits_in(s)]
         owned = [(o, s) for o, s in decl if _OWNERSHIP.search(s)]
         if valued and owned and valued[0][0] != owned[0][0]:
-            findings.append(("LEAK", f"{valued[0][0]}  +  {owned[0][0]}",
-                             hits_in(valued[0][1])))
+            findings.append(
+                ("LEAK", f"{valued[0][0]}  +  {owned[0][0]}", hits_in(valued[0][1]))
+            )
     return findings
 
 
@@ -302,27 +338,53 @@ def check_prescription(hint: str, stage: int):
     return out
 
 
-def check_all(hint: str, code_snippet: str, stage: int, intent: str, student_message: str = "", line_number: int | None = None):
-    return (check_leak(hint, code_snippet, stage)
-            + check_prescription(hint, stage)
-            + check_code(hint)
-            + check_analogy(hint, intent=intent)
-            + check_line_echo(hint, student_message=student_message, line_number=line_number)
-            + check_refusal(hint))
+def check_all(
+    hint: str,
+    code_snippet: str,
+    stage: int,
+    intent: str,
+    student_message: str = "",
+    line_number: int | None = None,
+):
+    return (
+        check_leak(hint, code_snippet, stage)
+        + check_prescription(hint, stage)
+        + check_code(hint)
+        + check_analogy(hint, intent=intent)
+        + check_line_echo(
+            hint, student_message=student_message, line_number=line_number
+        )
+        + check_refusal(hint)
+    )
 
 
 # ---------------------------------------------------------------------------
 # Replay
 # ---------------------------------------------------------------------------
 
+
 class Turn:
     """One student turn: classify leg + generate leg, with timings."""
 
     __slots__ = (
-        "turn_no", "student_message", "stage_in", "stage_out", "intent",
-        "classify_s", "generate_s", "total_s", "hint", "hint_words",
-        "prompt_tokens", "completion_tokens", "advanced", "advanced_softly",
-        "clear_gate", "attempts_at_this_stage", "leaks", "error",
+        "turn_no",
+        "student_message",
+        "stage_in",
+        "stage_out",
+        "intent",
+        "classify_s",
+        "generate_s",
+        "total_s",
+        "hint",
+        "hint_words",
+        "prompt_tokens",
+        "completion_tokens",
+        "advanced",
+        "advanced_softly",
+        "clear_gate",
+        "attempts_at_this_stage",
+        "leaks",
+        "error",
     )
 
     def __init__(self, **kw):
@@ -436,8 +498,10 @@ def replay_conversation(
             )
             if decision is None:
                 # Guards the missing-return bug: report, don't crash on unpack.
-                err = (f"resolve_next_stage returned None for intent={intent!r} "
-                       "- the function is missing a return for this branch")
+                err = (
+                    f"resolve_next_stage returned None for intent={intent!r} "
+                    "- the function is missing a return for this branch"
+                )
 
         if decision is not None:
             next_stage = decision.next_stage
@@ -447,11 +511,19 @@ def replay_conversation(
             advanced_softly = decision.advanced_softly
             clear_gate = decision.clear_gate
         else:
-            next_stage, advanced, advanced_softly, clear_gate = stage, False, False, False
+            next_stage, advanced, advanced_softly, clear_gate = (
+                stage,
+                False,
+                False,
+                False,
+            )
 
         offer_concept = None
-        if (pending_concept is None and next_stage == Stage.UNDERSTAND
-                and not resource_offered):
+        if (
+            pending_concept is None
+            and next_stage == Stage.UNDERSTAND
+            and not resource_offered
+        ):
             offer_concept = detect_concept(error_type, code_snippet)
         offer_resource = get_resource(offer_concept)
         active = offer_resource or (None if clear_gate else pending_resource)
@@ -489,26 +561,35 @@ def replay_conversation(
                 hit_rate_limit = True
         generate_s = time.perf_counter() - t1
 
-        turns.append(Turn(
-            turn_no=turn_no,
-            student_message=student_message,
-            stage_in=int(stage),
-            stage_out=int(next_stage),
-            intent=intent,
-            classify_s=round(classify_s, 3),
-            generate_s=round(generate_s, 3),
-            total_s=round(classify_s + generate_s, 3),
-            hint=hint,
-            hint_words=len(hint.split()),
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            advanced=advanced,
-            advanced_softly=advanced_softly,
-            clear_gate=clear_gate,
-            attempts_at_this_stage=attempts,
-            leaks=check_all(hint, code_snippet, next_stage, intent, student_message, error_data.get("line_number")),
-            error=err,
-        ))
+        turns.append(
+            Turn(
+                turn_no=turn_no,
+                student_message=student_message,
+                stage_in=int(stage),
+                stage_out=int(next_stage),
+                intent=intent,
+                classify_s=round(classify_s, 3),
+                generate_s=round(generate_s, 3),
+                total_s=round(classify_s + generate_s, 3),
+                hint=hint,
+                hint_words=len(hint.split()),
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                advanced=advanced,
+                advanced_softly=advanced_softly,
+                clear_gate=clear_gate,
+                attempts_at_this_stage=attempts,
+                leaks=check_all(
+                    hint,
+                    code_snippet,
+                    next_stage,
+                    intent,
+                    student_message,
+                    error_data.get("line_number"),
+                ),
+                error=err,
+            )
+        )
 
         if hit_rate_limit:
             break
@@ -532,19 +613,24 @@ def replay_conversation(
 # Reporting
 # ---------------------------------------------------------------------------
 
+
 def print_conversation(error_id: int, scenario: str, turns: list[Turn]) -> None:
     print(f"\n  error {error_id} / {scenario}")
-    print(f"  {'#':<2} {'reply':<14} {'intent':<20} {'stg':<5} "
-          f"{'clsfy':>7} {'gen':>7} {'total':>7} {'words':>6}  flags")
+    print(
+        f"  {'#':<2} {'reply':<14} {'intent':<20} {'stg':<5} "
+        f"{'clsfy':>7} {'gen':>7} {'total':>7} {'words':>6}  flags"
+    )
     print("  " + "-" * 88)
     for t in turns:
         reply = (t.student_message or "(opening)")[:13]
         stg = f"{t.stage_in}->{t.stage_out}"
         gate = " gate-open" if t.clear_gate else ""
-        print(f"  {t.turn_no:<2} {reply:<14} {t.intent:<20} {stg:<5} "
-              f"{t.classify_s:>7.2f} {t.generate_s:>7.2f} {t.total_s:>7.2f} "
-              f"{t.hint_words:>6}  {' '.join(t.flags())}{gate}")
-        for sev, sentence, hits in (t.leaks or []):
+        print(
+            f"  {t.turn_no:<2} {reply:<14} {t.intent:<20} {stg:<5} "
+            f"{t.classify_s:>7.2f} {t.generate_s:>7.2f} {t.total_s:>7.2f} "
+            f"{t.hint_words:>6}  {' '.join(t.flags())}{gate}"
+        )
+        for sev, sentence, hits in t.leaks or []:
             print(f"       [{sev}] {sentence}")
             print(f"              matched: {', '.join(hits)}")
         if t.error:
@@ -564,30 +650,45 @@ def summarise(all_turns: list[Turn]) -> None:
     print("CONTENT CHECK")
     print("  value leaks: stages 1-4 | prescriptions: stage 5 | code: all stages")
     print("=" * 80)
-    leaks, presc, code, review = (rows("LEAK"), rows("PRESCRIBE"),
-                                  rows("CODE"), rows("REVIEW"))
+    leaks, presc, code, review = (
+        rows("LEAK"),
+        rows("PRESCRIBE"),
+        rows("CODE"),
+        rows("REVIEW"),
+    )
     if not (leaks or presc or code or review):
         print("  Clean across all checks.")
-    for label, group in (("LEAK", leaks), ("PRESCRIBE", presc), ("CODE", code), ("REFUSAL", rows("REFUSAL"))):
+    for label, group in (
+        ("LEAK", leaks),
+        ("PRESCRIBE", presc),
+        ("CODE", code),
+        ("REFUSAL", rows("REFUSAL")),
+    ):
         for t, (_, sentence, hits) in group:
-            print(f"  {label:<10} stage {t.stage_out} turn {t.turn_no} "
-                  f"(intent={t.intent})")
-            print(f"             \"{sentence}\"")
+            print(
+                f"  {label:<10} stage {t.stage_out} turn {t.turn_no} "
+                f"(intent={t.intent})"
+            )
+            print(f'             "{sentence}"')
             print(f"             matched: {', '.join(hits)}")
     for t, (_, sentence, hits) in review:
-        print(f"  review     stage {t.stage_out} turn {t.turn_no}: \"{sentence}\"")
+        print(f'  review     stage {t.stage_out} turn {t.turn_no}: "{sentence}"')
         print(f"             matched: {', '.join(hits)}  (check by eye)")
-    print(f"\n  {len(leaks)} leak(s), {len(presc)} prescription(s), "
-          f"{len(code)} code, {len(review)} to review, {len(rows('REFUSAL'))} refusal(s), across {len(ok)} turns.")
+    print(
+        f"\n  {len(leaks)} leak(s), {len(presc)} prescription(s), "
+        f"{len(code)} code, {len(review)} to review, {len(rows('REFUSAL'))} refusal(s), across {len(ok)} turns."
+    )
 
     def stats(label, values):
         if not values:
             return
         values = sorted(values)
         p95 = values[min(len(values) - 1, int(len(values) * 0.95))]
-        print(f"  {label:<10} mean {statistics.mean(values):>6.2f}s   "
-              f"median {statistics.median(values):>6.2f}s   "
-              f"max {max(values):>6.2f}s   p95 {p95:>6.2f}s")
+        print(
+            f"  {label:<10} mean {statistics.mean(values):>6.2f}s   "
+            f"median {statistics.median(values):>6.2f}s   "
+            f"max {max(values):>6.2f}s   p95 {p95:>6.2f}s"
+        )
 
     print("\n" + "=" * 80)
     print("TIMING")
@@ -599,23 +700,31 @@ def summarise(all_turns: list[Turn]) -> None:
     toks = [(t.prompt_tokens or 0) + (t.completion_tokens or 0) for t in ok]
     if any(toks):
         print(f"\n  tokens/turn: mean {statistics.mean(toks):.0f}  max {max(toks)}")
-        print(f"  this run used ~{sum(toks):,} tokens "
-              f"({sum(toks) / DAILY_TOKEN_BUDGET:.1%} of a "
-              f"{DAILY_TOKEN_BUDGET:,} daily budget)")
+        print(
+            f"  this run used ~{sum(toks):,} tokens "
+            f"({sum(toks) / DAILY_TOKEN_BUDGET:.1%} of a "
+            f"{DAILY_TOKEN_BUDGET:,} daily budget)"
+        )
 
     slow = [t for t in ok if t.total_s >= SLOW_TURN_S]
     if slow:
-        print(f"\n  {len(slow)}/{len(ok)} turns took {SLOW_TURN_S}s or more "
-              f"(a slow classify leg usually means a 429 being retried):")
+        print(
+            f"\n  {len(slow)}/{len(ok)} turns took {SLOW_TURN_S}s or more "
+            f"(a slow classify leg usually means a 429 being retried):"
+        )
         for t in slow:
-            print(f"    turn {t.turn_no} intent={t.intent} "
-                  f"classify={t.classify_s:.2f}s generate={t.generate_s:.2f}s")
+            print(
+                f"    turn {t.turn_no} intent={t.intent} "
+                f"classify={t.classify_s:.2f}s generate={t.generate_s:.2f}s"
+            )
 
     by_intent: dict[str, list[float]] = {}
     for t in ok:
         by_intent.setdefault(t.intent, []).append(t.total_s)
     print("\n  by intent:")
-    for intent, vals in sorted(by_intent.items(), key=lambda kv: -statistics.mean(kv[1])):
+    for intent, vals in sorted(
+        by_intent.items(), key=lambda kv: -statistics.mean(kv[1])
+    ):
         print(f"    {intent:<22} n={len(vals):<3} mean {statistics.mean(vals):>6.2f}s")
 
     errs = [t for t in all_turns if t.error]
@@ -628,6 +737,7 @@ def summarise(all_turns: list[Turn]) -> None:
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def evaluate_errors(
     error_ids: list[int] | None = None,
@@ -646,7 +756,9 @@ def evaluate_errors(
         if error_ids:
             statement = select(ErrorLog).where(ErrorLog.id.in_(error_ids))
         else:
-            statement = select(ErrorLog).order_by(ErrorLog.created_at.desc()).limit(limit)
+            statement = (
+                select(ErrorLog).order_by(ErrorLog.created_at.desc()).limit(limit)
+            )
         errors = session.exec(statement).all()
         fetched = [get_error_with_submission(e.id) for e in errors]
     fetched = [d for d in fetched if d]
@@ -661,8 +773,10 @@ def evaluate_errors(
         for name in scenario_names:
             allowed = SCENARIO_ERRORS.get(name)
             if allowed and data["error_type"] not in allowed:
-                print(f"  skipping {name} for error {data['error_id']} - written "
-                      f"for {sorted(allowed)}, this is {data['error_type']}")
+                print(
+                    f"  skipping {name} for error {data['error_id']} - written "
+                    f"for {sorted(allowed)}, this is {data['error_type']}"
+                )
                 continue
             pairs.append((data, name))
     if not pairs:
@@ -671,21 +785,29 @@ def evaluate_errors(
 
     n_turns = sum(len(SCENARIOS[n]) + 1 for _, n in pairs) * repeat
     est = n_turns * TOKENS_PER_TURN
-    print(f"Plan: {len(pairs)} error/scenario pair(s) x {repeat} pass(es) = "
-          f"{n_turns} turns, starting at stage {start_stage}, on model={model}")
-    print(f"Estimated ~{est:,} tokens "
-          f"(~{est / DAILY_TOKEN_BUDGET:.0%} of a {DAILY_TOKEN_BUDGET:,} daily budget)")
+    print(
+        f"Plan: {len(pairs)} error/scenario pair(s) x {repeat} pass(es) = "
+        f"{n_turns} turns, starting at stage {start_stage}, on model={model}"
+    )
+    print(
+        f"Estimated ~{est:,} tokens "
+        f"(~{est / DAILY_TOKEN_BUDGET:.0%} of a {DAILY_TOKEN_BUDGET:,} daily budget)"
+    )
     if n_turns > 5 and not delay:
-        print("  NOTE: over 5 turns with no --delay will likely hit the "
-              "7000 input-tokens-per-minute ceiling. Try --delay 12.")
+        print(
+            "  NOTE: over 5 turns with no --delay will likely hit the "
+            "7000 input-tokens-per-minute ceiling. Try --delay 12."
+        )
 
     if dry_run:
         print("\nDry run - no API calls made.")
         for data, name in pairs:
             print(f"  error {data['error_id']} ({data['error_type']}) / {name}")
             print(f"    replies: {SCENARIOS[name]}")
-            print(f"    leak check watches: "
-                  f"{sorted(extract_values(data['failing_code_snippet'])) or '(none)'}")
+            print(
+                f"    leak check watches: "
+                f"{sorted(extract_values(data['failing_code_snippet'])) or '(none)'}"
+            )
         return
 
     results, all_turns, stopped = [], [], False
@@ -698,16 +820,18 @@ def evaluate_errors(
             )
             print_conversation(data["error_id"], name, turns)
             all_turns.extend(turns)
-            results.append({
-                "run_at": datetime.now().isoformat(),
-                "pass": pass_no,
-                "error_id": data["error_id"],
-                "error_type": data["error_type"],
-                "scenario": name,
-                "start_stage": start_stage,
-                "model": model,
-                "turns": [t.as_dict() for t in turns],
-            })
+            results.append(
+                {
+                    "run_at": datetime.now().isoformat(),
+                    "pass": pass_no,
+                    "error_id": data["error_id"],
+                    "error_type": data["error_type"],
+                    "scenario": name,
+                    "start_stage": start_stage,
+                    "model": model,
+                    "turns": [t.as_dict() for t in turns],
+                }
+            )
             if limited:
                 print("\n  Rate limited - stopping. Remaining turns skipped.")
                 stopped = True
@@ -733,19 +857,40 @@ def evaluate_errors(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--error-ids", type=int, nargs="*", default=None)
-    parser.add_argument("--limit", type=int, default=1,
-                        help="how many recent errors to replay (default 1)")
-    parser.add_argument("--scenarios", nargs="*", default=["stuck_student"],
-                        choices=list(SCENARIOS))
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=1,
+        help="how many recent errors to replay (default 1)",
+    )
+    parser.add_argument(
+        "--scenarios", nargs="*", default=["stuck_student"], choices=list(SCENARIOS)
+    )
     parser.add_argument("--model", default="qwen/qwen3.8-27b")
-    parser.add_argument("--repeat", type=int, default=1,
-                        help="passes over the same inputs, to see run-to-run variance")
-    parser.add_argument("--start-stage", type=int, default=1, choices=[1, 2, 3, 4, 5],
-                        help="seed the opening turn at this stage")
-    parser.add_argument("--delay", type=float, default=0.0,
-                        help="seconds between turns; ~12 keeps you under a 7000 ITPM ceiling")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="print the plan and token estimate without calling the API")
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help="passes over the same inputs, to see run-to-run variance",
+    )
+    parser.add_argument(
+        "--start-stage",
+        type=int,
+        default=1,
+        choices=[1, 2, 3, 4, 5],
+        help="seed the opening turn at this stage",
+    )
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=0.0,
+        help="seconds between turns; ~12 keeps you under a 7000 ITPM ceiling",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the plan and token estimate without calling the API",
+    )
     parser.add_argument("--output", default="eval_results.json")
     args = parser.parse_args()
 

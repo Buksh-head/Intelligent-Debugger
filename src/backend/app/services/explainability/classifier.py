@@ -5,6 +5,7 @@ time, so a request never pays for a fit. The model exists because SHAP,
 LIME and DiCE explain models rather than hosted LLM calls; see
 docs/decisions/features/explainable-socratic-hints.md.
 """
+
 import json
 import logging
 import joblib
@@ -28,23 +29,34 @@ DEFAULT_DATA_PATH = Path(__file__).resolve().parent / "data" / "misconceptions.j
 # "timed_out" is identical to (error_type == "TimeoutError") on every row of
 # the dataset, so it carries no information the encoder does not already have.
 NUMERIC_FEATURES = [
-    "total_lines", "line_number_ratio", "num_loops", "max_loop_depth",
-    "num_conditionals", "num_function_defs", "has_subscript",
-    "has_division", "mutates_during_iteration", "parse_failed",
+    "total_lines",
+    "line_number_ratio",
+    "num_loops",
+    "max_loop_depth",
+    "num_conditionals",
+    "num_function_defs",
+    "has_subscript",
+    "has_division",
+    "mutates_during_iteration",
+    "parse_failed",
 ]
+
 
 def build_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
     records = [
         extract_features(row.code, row.error_type, row.timed_out)
         for row in df.itertuples()
     ]
-    engineered = pd.DataFrame(records, index=df.index).drop(columns=["error_type", "timed_out"])
+    engineered = pd.DataFrame(records, index=df.index).drop(
+        columns=["error_type", "timed_out"]
+    )
     return pd.concat([df, engineered], axis=1)
+
 
 def load_dataset(path: Path = DEFAULT_DATA_PATH) -> pd.DataFrame:
     rows = []
     with open(path, "r", encoding="utf-8") as f:
-        for line_no, line in enumerate(f,start=1):
+        for line_no, line in enumerate(f, start=1):
             line = line.strip()
             if not line:
                 continue
@@ -54,27 +66,32 @@ def load_dataset(path: Path = DEFAULT_DATA_PATH) -> pd.DataFrame:
                 raise ValueError(f"{path}:{line_no} is not valid JSON") from e
     return pd.DataFrame(rows)
 
-def build_pipeline(random_state:int) -> Pipeline:
+
+def build_pipeline(random_state: int) -> Pipeline:
     preprocessor = ColumnTransformer(
         transformers=[
             ("cat", OneHotEncoder(handle_unknown="ignore"), ["error_type"]),
             ("text", TfidfVectorizer(), "message"),
             ("num", "passthrough", NUMERIC_FEATURES),
         ],
-        remainder="drop"
+        remainder="drop",
     )
 
-    return Pipeline(steps=[
-        ("preprocess", preprocessor),
-        ("clf", LogisticRegression(max_iter=1000, random_state=random_state))
-    ])
+    return Pipeline(
+        steps=[
+            ("preprocess", preprocessor),
+            ("clf", LogisticRegression(max_iter=1000, random_state=random_state)),
+        ]
+    )
+
 
 def train_test_split_data(df, test_size, random_state):
     X = df.drop(columns=["misconception_label"])
     y = df["misconception_label"]
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y,
+        X,
+        y,
         test_size=test_size,
         random_state=random_state,
         stratify=y,
@@ -83,11 +100,22 @@ def train_test_split_data(df, test_size, random_state):
     ambiguous_test = X_test["ambiguous"]
     return X_train, X_test, y_train, y_test, ambiguous_test
 
+
 def fit_pipeline(pipeline, X_train, y_train):
     pipeline.fit(X_train, y_train)
     return pipeline
 
-def evaluate(pipeline : Pipeline, X_train, y_train, X_test, y_test, ambiguous_mask, collision_test_mask, full_df) -> dict:
+
+def evaluate(
+    pipeline: Pipeline,
+    X_train,
+    y_train,
+    X_test,
+    y_test,
+    ambiguous_mask,
+    collision_test_mask,
+    full_df,
+) -> dict:
     headline_preds = pipeline.predict(X_test)
     headline_accuracy = accuracy_score(y_test, headline_preds)
 
@@ -101,22 +129,27 @@ def evaluate(pipeline : Pipeline, X_train, y_train, X_test, y_test, ambiguous_ma
     col_preds = pipeline.predict(X_col)
     collision_accuracy = accuracy_score(y_col, col_preds) if len(y_col) else None
 
-    return{
+    return {
         "headline_accuracy": float(headline_accuracy),
         "headline_n": int(len(y_test)),
-        "ambiguous_accuracy": ambiguous_correct/len(y_amb) if len(y_amb) else None,
+        "ambiguous_accuracy": ambiguous_correct / len(y_amb) if len(y_amb) else None,
         "ambiguous_n": int(len(y_amb)),
         "collision_accuracy": collision_accuracy,
         "collision_n": int(len(y_col)),
-        "held_out_lookup_baseline_accuracy": held_out_lookup_baseline_accuracy(X_train, y_train, X_test, y_test)
+        "held_out_lookup_baseline_accuracy": held_out_lookup_baseline_accuracy(
+            X_train, y_train, X_test, y_test
+        ),
     }
+
 
 def save_pipeline(pipeline, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(pipeline, path)
 
+
 def load_pipeline(path: Path) -> Pipeline:
     return joblib.load(path)
+
 
 def held_out_lookup_baseline_accuracy(X_train, y_train, X_test, y_test) -> float:
     """Accuracy of "predict the most common label for this exact message".
@@ -140,8 +173,11 @@ def held_out_lookup_baseline_accuracy(X_train, y_train, X_test, y_test) -> float
 
 
 def collision_mask(df: pd.DataFrame) -> pd.Series:
-    label_counts_per_message = df.groupby("message")["misconception_label"].transform("nunique")
+    label_counts_per_message = df.groupby("message")["misconception_label"].transform(
+        "nunique"
+    )
     return label_counts_per_message > 1
+
 
 class MisconceptionClassifier:
     """Serving wrapper around a fitted pipeline.
@@ -158,7 +194,9 @@ class MisconceptionClassifier:
         # any other ordering mislabels every one of them silently.
         self.labels = list(pipeline.classes_)
 
-    def predict_proba(self, code: str, error_type: str, message: str, timed_out: bool) -> dict:
+    def predict_proba(
+        self, code: str, error_type: str, message: str, timed_out: bool
+    ) -> dict:
         try:
             features = extract_features(code, error_type, timed_out)
             features["message"] = message
@@ -169,7 +207,9 @@ class MisconceptionClassifier:
             # A uniform distribution is also what a genuinely uncertain
             # prediction looks like, so the fault has to be recorded or it
             # is indistinguishable from normal operation.
-            logger.error(f"Misconception prediction failed for error_type={error_type}: {e}")
+            logger.error(
+                f"Misconception prediction failed for error_type={error_type}: {e}"
+            )
             return self._unknown_fallback()
 
     def _unknown_fallback(self) -> dict:

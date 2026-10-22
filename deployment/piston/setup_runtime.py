@@ -1,5 +1,5 @@
-"""Prepares the Piston Python runtime for student submissions (issue #117).
-"""
+"""Prepares the Piston Python runtime for student submissions (issue #117)."""
+
 import json
 import os
 import subprocess

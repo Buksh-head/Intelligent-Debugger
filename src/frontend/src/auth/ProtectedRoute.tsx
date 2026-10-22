@@ -3,10 +3,10 @@
  * role. Instructors can also open student pages. Anyone else is sent to
  * the page that suits their role.
  */
-import type { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
-import { useAuth } from './useAuth';
-import type { Role } from './context';
+import type { ReactNode } from "react";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "./useAuth";
+import type { Role } from "./context";
 
 export default function ProtectedRoute({
   children,
@@ -33,7 +33,7 @@ export default function ProtectedRoute({
   const allowed =
     !requiredRole ||
     role === requiredRole ||
-    (requiredRole === 'student' && role === 'instructor');
+    (requiredRole === "student" && role === "instructor");
 
   if (!allowed) {
     // No profile row: send to the welcome page rather than looping.

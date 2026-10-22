@@ -6,6 +6,7 @@ processor in #7. Runtime behaviour comes from the sandbox, not from here.
 Feature order in ``FEATURE_NAMES`` is part of the contract: SHAP and DiCE both
 index features by position, so appending is safe but reordering is not.
 """
+
 import ast
 
 FEATURE_NAMES = (
@@ -24,10 +25,21 @@ FEATURE_NAMES = (
 )
 
 # Methods that change a collection in place. Covers list, dict and set.
-_MUTATING_METHODS = frozenset({
-    "append", "extend", "insert", "remove", "pop", "clear",
-    "add", "discard", "update", "popitem", "setdefault",
-})
+_MUTATING_METHODS = frozenset(
+    {
+        "append",
+        "extend",
+        "insert",
+        "remove",
+        "pop",
+        "clear",
+        "add",
+        "discard",
+        "update",
+        "popitem",
+        "setdefault",
+    }
+)
 
 # Modulo is included because it raises ZeroDivisionError just as division does.
 _DIVISION_OPS = (ast.Div, ast.FloorDiv, ast.Mod)

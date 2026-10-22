@@ -2,14 +2,14 @@
 // its diagnosis. Collapsed by default, and renders whatever subset of the
 // explanation arrived, or nothing.
 
-import { useState } from 'react';
-import type { Explanation } from '../types';
+import { useState } from "react";
+import type { Explanation } from "../types";
 
 // Show only the top few reasons so the panel stays short.
 const MAX_ATTRIBUTIONS = 3;
 
 // Turns labels like "off-by-one" into "off by one" for display.
-const readable = (misconception: string) => misconception.replace(/-/g, ' ');
+const readable = (misconception: string) => misconception.replace(/-/g, " ");
 
 function WhyThisHint({ explanation }: { explanation?: Explanation | null }) {
   const [open, setOpen] = useState(false);
@@ -18,7 +18,10 @@ function WhyThisHint({ explanation }: { explanation?: Explanation | null }) {
 
   const reasoning = explanation.reasoning?.trim();
   const misconception = explanation.misconception?.trim();
-  const attributions = (explanation.attributions ?? []).slice(0, MAX_ATTRIBUTIONS);
+  const attributions = (explanation.attributions ?? []).slice(
+    0,
+    MAX_ATTRIBUTIONS,
+  );
 
   if (!reasoning && !misconception && attributions.length === 0) return null;
 
@@ -30,13 +33,17 @@ function WhyThisHint({ explanation }: { explanation?: Explanation | null }) {
         aria-expanded={open}
         onClick={() => setOpen((wasOpen) => !wasOpen)}
       >
-        <span aria-hidden="true">{open ? '▾' : '▸'}</span>
+        <span aria-hidden="true">{open ? "▾" : "▸"}</span>
         How did it work this out?
       </button>
 
       {open && (
         <div className="mt-2 space-y-3">
-          {reasoning && <p className="whitespace-pre-wrap text-base-content/80">{reasoning}</p>}
+          {reasoning && (
+            <p className="whitespace-pre-wrap text-base-content/80">
+              {reasoning}
+            </p>
+          )}
 
           {/* No confidence figure: the classifier's probability is an uncalibrated
               softmax output, so a percentage would overstate what it knows. */}
@@ -49,7 +56,9 @@ function WhyThisHint({ explanation }: { explanation?: Explanation | null }) {
 
           {attributions.length > 0 && (
             <div>
-              <p className="mb-1 text-base-content/60">What pointed there (strongest first):</p>
+              <p className="mb-1 text-base-content/60">
+                What pointed there (strongest first):
+              </p>
               <ul className="list-inside list-disc space-y-1">
                 {attributions.map((attribution) => (
                   <li key={attribution.feature}>{attribution.label}</li>

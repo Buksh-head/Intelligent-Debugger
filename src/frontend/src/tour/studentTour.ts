@@ -3,17 +3,17 @@
  * one at a time, using the data-tour markers in App.tsx. With an empty
  * editor it runs as a demo: it puts in sample code and the student runs it.
  */
-import { driver, type Driver, type DriveStep } from 'driver.js';
-import 'driver.js/dist/driver.css';
-import type { ExecutionResponse } from '../types';
-import { saveTourStatus } from './tourStatus';
+import { driver, type Driver, type DriveStep } from "driver.js";
+import "driver.js/dist/driver.css";
+import type { ExecutionResponse } from "../types";
+import { saveTourStatus } from "./tourStatus";
 
 type TourOptions = {
-  languageLabel: string;    // e.g. "Python"
-  extension: string;        // e.g. "py"
-  demo: boolean;            // true when the editor was empty, so sample code can be used
+  languageLabel: string; // e.g. "Python"
+  extension: string; // e.g. "py"
+  demo: boolean; // true when the editor was empty, so sample code can be used
   onLoadSample: () => void; // puts the sample code in the editor
-  onEnd: () => void;        // tidies up after the tour, however it ends
+  onEnd: () => void; // tidies up after the tour, however it ends
 };
 
 // Broken sample code the tour puts in the editor, with the result Run shows
@@ -23,58 +23,60 @@ type TourSample = { code: string; result: ExecutionResponse };
 
 const tourSamples: Record<string, TourSample> = {
   Python: {
-    code: 'numbers = [1, 2, 3]\nprint(numbers[3])\n',
+    code: "numbers = [1, 2, 3]\nprint(numbers[3])\n",
     result: {
-      stdout: '',
-      stderr: 'IndexError: list index out of range',
+      stdout: "",
+      stderr: "IndexError: list index out of range",
       exit_code: 1,
       status: null,
       timed_out: false,
       error: {
-        error_type: 'IndexError',
-        message: 'list index out of range',
+        error_type: "IndexError",
+        message: "list index out of range",
         line_number: 2,
-        code_snippet: 'print(numbers[3])',
+        code_snippet: "print(numbers[3])",
       },
       error_id: null,
     },
   },
   Java: {
     code:
-      'public class Main {\n' +
-      '    public static void main(String[] args) {\n' +
-      '        int[] numbers = {1, 2, 3};\n' +
-      '        System.out.println(numbers[3]);\n' +
-      '    }\n' +
-      '}\n',
+      "public class Main {\n" +
+      "    public static void main(String[] args) {\n" +
+      "        int[] numbers = {1, 2, 3};\n" +
+      "        System.out.println(numbers[3]);\n" +
+      "    }\n" +
+      "}\n",
     result: {
-      stdout: '',
-      stderr: 'ArrayIndexOutOfBoundsException: Index 3 out of bounds for length 3',
+      stdout: "",
+      stderr:
+        "ArrayIndexOutOfBoundsException: Index 3 out of bounds for length 3",
       exit_code: 1,
       status: null,
       timed_out: false,
       error: {
-        error_type: 'ArrayIndexOutOfBoundsException',
-        message: 'Index 3 out of bounds for length 3',
+        error_type: "ArrayIndexOutOfBoundsException",
+        message: "Index 3 out of bounds for length 3",
         line_number: 4,
-        code_snippet: 'System.out.println(numbers[3]);',
+        code_snippet: "System.out.println(numbers[3]);",
       },
       error_id: null,
     },
   },
   JavaScript: {
-    code: 'const numbers = [1, 2, 3];\nconsole.log(numbers[3].toFixed(1));\n',
+    code: "const numbers = [1, 2, 3];\nconsole.log(numbers[3].toFixed(1));\n",
     result: {
-      stdout: '',
-      stderr: "TypeError: Cannot read properties of undefined (reading 'toFixed')",
+      stdout: "",
+      stderr:
+        "TypeError: Cannot read properties of undefined (reading 'toFixed')",
       exit_code: 1,
       status: null,
       timed_out: false,
       error: {
-        error_type: 'TypeError',
+        error_type: "TypeError",
         message: "Cannot read properties of undefined (reading 'toFixed')",
         line_number: 2,
-        code_snippet: 'console.log(numbers[3].toFixed(1));',
+        code_snippet: "console.log(numbers[3].toFixed(1));",
       },
       error_id: null,
     },
@@ -97,14 +99,14 @@ const isOnScreen = (selector: string): boolean => {
 
 // Includes a step only if its element is on screen when the tour starts.
 const ifOnScreen = (step: DriveStep): DriveStep[] =>
-  typeof step.element === 'string' && isOnScreen(step.element) ? [step] : [];
+  typeof step.element === "string" && isOnScreen(step.element) ? [step] : [];
 
 const buildSteps = (options: TourOptions, tour: Driver): DriveStep[] => {
   const { languageLabel, extension, demo, onLoadSample } = options;
 
   const welcome: DriveStep = {
     popover: {
-      title: 'Welcome!',
+      title: "Welcome!",
       description: demo
         ? "Here's a quick look around. You'll try running some broken code to see how it works. You can close this any time."
         : "Here's a quick look around before you start. You can close this any time.",
@@ -114,36 +116,38 @@ const buildSteps = (options: TourOptions, tour: Driver): DriveStep[] => {
   const editor: DriveStep = {
     element: '[data-tour="editor"]',
     popover: {
-      title: 'Your code',
+      title: "Your code",
       description: `Type or paste the ${languageLabel} code that isn't working here.`,
-      side: 'right',
+      side: "right",
     },
   };
 
   const divider = ifOnScreen({
     element: '[data-tour="divider"]',
     popover: {
-      title: 'Make more room',
-      description: 'Drag this line to give your code or the assistant more space. Double-click it to reset.',
+      title: "Make more room",
+      description:
+        "Drag this line to give your code or the assistant more space. Double-click it to reset.",
     },
   });
 
   const replyBox: DriveStep = {
     element: '[data-tour="chat-input"]',
     popover: {
-      title: 'Reply to the assistant',
-      description: 'With hints, answer the assistant here to unlock the next hint.',
-      side: 'top',
+      title: "Reply to the assistant",
+      description:
+        "With hints, answer the assistant here to unlock the next hint.",
+      side: "top",
     },
   };
 
   const help: DriveStep = {
     element: '[data-tour="help"]',
     popover: {
-      title: 'Need this again?',
-      description: 'Click here any time to replay this tour.',
-      side: 'bottom',
-      align: 'end',
+      title: "Need this again?",
+      description: "Click here any time to replay this tour.",
+      side: "bottom",
+      align: "end",
     },
   };
 
@@ -155,26 +159,28 @@ const buildSteps = (options: TourOptions, tour: Driver): DriveStep[] => {
       {
         element: tourRunStep,
         popover: {
-          title: 'Run your code',
-          description: 'Click Run to run your code safely. Run it again whenever you make a change.',
-          side: 'bottom',
+          title: "Run your code",
+          description:
+            "Click Run to run your code safely. Run it again whenever you make a change.",
+          side: "bottom",
         },
       },
       {
         element: '[data-tour="output"]',
         popover: {
-          title: 'See what happened',
-          description: 'Anything your program prints shows up here. If it crashes, the error appears in red.',
-          side: 'top',
+          title: "See what happened",
+          description:
+            "Anything your program prints shows up here. If it crashes, the error appears in red.",
+          side: "top",
         },
       },
       {
         element: '[data-tour="assistant"]',
         popover: {
-          title: 'Get help with errors',
+          title: "Get help with errors",
           description:
-            'When your code has an error, the assistant tells you what happened and which line to look at. You can then pick a hint to work it out step by step, or ask for the answer.',
-          side: 'left',
+            "When your code has an error, the assistant tells you what happened and which line to look at. You can then ask for a hint to work it out step by step. Once you have had a good go at understanding the error, the full answer unlocks too.",
+          side: "left",
         },
       },
       replyBox,
@@ -190,7 +196,7 @@ const buildSteps = (options: TourOptions, tour: Driver): DriveStep[] => {
     {
       element: '[data-tour="upload"]',
       popover: {
-        title: 'Or upload a file',
+        title: "Or upload a file",
         description: `Already have your code in a .${extension} file? Upload it here instead. Click Next and we'll put in some broken code for you to try.`,
         onNextClick: () => {
           onLoadSample();
@@ -202,35 +208,38 @@ const buildSteps = (options: TourOptions, tour: Driver): DriveStep[] => {
       element: tourRunStep,
       disableActiveInteraction: false, // the student clicks Run here
       popover: {
-        title: 'Run your code',
-        description: "We've put some broken code in for you. Click Run to see what happens.",
-        side: 'bottom',
-        showButtons: ['close'], // App moves the tour on once the result shows
+        title: "Run your code",
+        description:
+          "We've put some broken code in for you. Click Run to see what happens.",
+        side: "bottom",
+        showButtons: ["close"], // App moves the tour on once the result shows
       },
     },
     {
       element: '[data-tour="output"]',
       popover: {
-        title: 'See what happened',
-        description: 'Your program crashed, so the error shows here in red. Anything your program prints shows up here too.',
-        side: 'top',
+        title: "See what happened",
+        description:
+          "Your program crashed, so the error shows here in red. Anything your program prints shows up here too.",
+        side: "top",
       },
     },
     {
       element: '[data-tour="error"]',
       popover: {
-        title: 'What happened and where',
-        description: 'This explains the error in plain words. "Go to line" jumps straight to the line to look at.',
-        side: 'left',
+        title: "What happened and where",
+        description:
+          'This explains the error in plain words. "Go to line" jumps straight to the line to look at.',
+        side: "left",
       },
     },
     {
       element: '[data-tour="help-choice"]',
       popover: {
-        title: 'Choose how you want help',
+        title: "Ask for a hint",
         description:
-          'A hint walks you through finding the fix yourself, one step at a time. Show me the answer explains the error and the fix straight away.',
-        side: 'left',
+          "A hint walks you through finding the fix yourself, one step at a time. Once you have had a good go at understanding the error, Show me the answer unlocks and explains the fix.",
+        side: "left",
       },
     },
     replyBox,
@@ -247,16 +256,19 @@ export const startStudentTour = (options: TourOptions): Driver => {
     // Run step turns this back off so the student can click Run.
     disableActiveInteraction: true,
     showProgress: true,
-    progressText: '{{current}} of {{total}}',
-    nextBtnText: 'Next',
-    prevBtnText: 'Back',
-    doneBtnText: 'Done',
-    popoverClass: 'student-tour',
+    progressText: "{{current}} of {{total}}",
+    nextBtnText: "Next",
+    prevBtnText: "Back",
+    doneBtnText: "Done",
+    popoverClass: "student-tour",
     // Runs however the tour closes: Done, the X, Escape or clicking outside.
     // Done on the last step counts as completed, anything else as skipped.
     // Saved to the student's account so it only starts by itself once.
     onDestroyStarted: () => {
-      void saveTourStatus('student', tour.hasNextStep() ? 'skipped' : 'completed');
+      void saveTourStatus(
+        "student",
+        tour.hasNextStep() ? "skipped" : "completed",
+      );
       options.onEnd();
       tour.destroy();
     },
