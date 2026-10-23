@@ -30,6 +30,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
+        "https://error-guide.vercel.app",
         "https://intelligent-debugger.vercel.app",
     ],  # Vite dev server
     allow_credentials=True,
