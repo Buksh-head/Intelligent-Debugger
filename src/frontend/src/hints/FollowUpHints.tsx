@@ -10,7 +10,8 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Lightbulb, Send } from "lucide-react";
+import { CheckCircle2, KeyRound, Lightbulb, Send } from "lucide-react";
+import { createPortal } from "react-dom";
 import { getFollowUpHint } from "../api";
 import type {
   ExecutionResponse,
@@ -32,7 +33,9 @@ type Props = {
   // The saved session and error, so each follow-up is recorded for the dashboard.
   saved?: SavedErrorRef;
   initialSteps?: HintStep[];
+  composerHost: HTMLDivElement | null;
   onStep?: (step: HintStep) => void;
+  onShowAnswer?: () => void;
   onLookAtLine: (line: number) => void;
   errorMessage: (err: unknown, fallback: string) => string;
 };
@@ -45,7 +48,9 @@ export default function FollowUpHints({
   expected,
   saved,
   initialSteps,
+  composerHost,
   onStep,
+  onShowAnswer,
   onLookAtLine,
   errorMessage,
 }: Props) {
@@ -53,6 +58,7 @@ export default function FollowUpHints({
   const [draft, setDraft] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const conversationEndRef = useRef<HTMLDivElement>(null);
   // A response that arrives after this component is gone (new run) is dropped.
   const mounted = useRef(true);
   useEffect(() => {
@@ -65,6 +71,24 @@ export default function FollowUpHints({
   const last = steps[steps.length - 1]?.response;
   const done = last?.final ?? false;
   const currentQuestion = last ? last.text : firstQuestion;
+
+  useEffect(() => {
+    conversationEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
+  }, [steps.length, error]);
+
+  const showAnswerButton = onShowAnswer && (
+    <button
+      type="button"
+      className="btn btn-sm btn-ghost min-w-0 justify-start px-2 text-left"
+      onClick={onShowAnswer}
+    >
+      <KeyRound size={14} />
+      Still stuck? Show me the answer
+    </button>
+  );
 
   const send = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -100,65 +124,84 @@ export default function FollowUpHints({
     }
   };
 
-  return (
-    <div className="flex flex-col gap-3" data-tour="follow-up">
-      {steps.map((step, i) => (
-        <div key={i} className="flex flex-col gap-3">
-          <div className="self-end max-w-[85%] rounded-box bg-base-200 px-4 py-2 text-sm">
-            <span className="sr-only">You replied: </span>
-            {step.reply}
-          </div>
-          <ResponseCard
-            response={step.response}
-            number={i + 2}
-            onLookAtLine={onLookAtLine}
-          />
-        </div>
-      ))}
-
+  const composer = (
+    <>
       {!done && (
-        <form onSubmit={send} className="flex flex-col gap-2">
-          <label
-            htmlFor="hint-reply"
-            className="text-xs text-base-content/70"
-          >
-            Not sure yet? Answer the question in your own words and you'll get
-            the next hint.
-          </label>
-          <textarea
-            id="hint-reply"
-            className="textarea textarea-bordered w-full text-sm"
-            rows={2}
-            maxLength={MAX_REPLY_CHARS}
-            placeholder="Reply to the question above..."
-            aria-label={`Your answer to: ${currentQuestion}`}
-            value={draft}
-            disabled={isLoading}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              // Enter sends, Shift+Enter adds a new line.
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                e.currentTarget.form?.requestSubmit();
-              }
-            }}
-          />
-          <button
-            type="submit"
-            className="btn btn-sm btn-primary self-end"
-            disabled={!draft.trim() || isLoading}
-          >
-            {isLoading ? (
-              <span className="loading loading-dots loading-sm"></span>
-            ) : (
-              <Send size={14} />
-            )}
-            Send answer
-          </button>
+        <form
+          onSubmit={send}
+          className="flex flex-col gap-2 rounded-b-box border-t border-base-300 bg-base-100 px-3 pt-3 pb-3 sm:px-4"
+        >
+          <div className="flex flex-col items-stretch gap-2">
+            <textarea
+              id="hint-reply"
+              className="textarea textarea-bordered h-[3.75rem] min-h-[3.75rem] max-h-[3.75rem] w-full resize-none overflow-y-auto rounded-lg text-sm"
+              rows={2}
+              maxLength={MAX_REPLY_CHARS}
+              placeholder="Answer the question in your own words and you'll get the next hint..."
+              aria-label={`Your answer to: ${currentQuestion}`}
+              value={draft}
+              disabled={isLoading}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter sends, Shift+Enter adds a new line.
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  e.currentTarget.form?.requestSubmit();
+                }
+              }}
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              {showAnswerButton}
+              <button
+                type="submit"
+                className="btn btn-sm btn-primary ml-auto"
+                disabled={!draft.trim() || isLoading}
+              >
+                {isLoading ? (
+                  <span className="loading loading-dots loading-sm"></span>
+                ) : (
+                  <Send size={14} />
+                )}
+                Send answer
+              </button>
+            </div>
+          </div>
         </form>
       )}
-      {error && <p className="text-sm text-error">{error}</p>}
-    </div>
+      {done && showAnswerButton && (
+        <div className="rounded-b-box border-t border-base-300 bg-base-100 px-3 pt-3 pb-3 sm:px-4">
+          <div className="flex justify-end">{showAnswerButton}</div>
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <>
+      <div className="flex flex-col gap-3" data-tour="follow-up">
+        {steps.map((step, i) => (
+          <article key={i} className="space-y-2">
+            <div className="flex justify-end">
+              <div className="max-w-[85%] rounded-box border border-base-300 bg-base-200 px-4 py-3 text-sm shadow-sm">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-base-content/50">
+                  Your reply
+                </p>
+                <p className="whitespace-pre-wrap">{step.reply}</p>
+              </div>
+            </div>
+            <ResponseCard
+              response={step.response}
+              number={i + 2}
+              onLookAtLine={onLookAtLine}
+            />
+          </article>
+        ))}
+        <div ref={conversationEndRef} aria-hidden="true" />
+
+        {error && <p className="text-sm text-error">{error}</p>}
+      </div>
+      {composerHost && createPortal(composer, composerHost)}
+    </>
   );
 }
 

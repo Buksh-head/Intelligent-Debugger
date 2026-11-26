@@ -209,6 +209,8 @@ function App() {
   const [checkError, setCheckError] = useState<string | null>(null);
   // Follow-ups restored with a saved hint, shown under it again.
   const [restoredSteps, setRestoredSteps] = useState<HintStep[]>([]);
+  const [followUpComposerHost, setFollowUpComposerHost] =
+    useState<HTMLDivElement | null>(null);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -789,7 +791,7 @@ function App() {
         path="/student"
         element={
           <ProtectedRoute requiredRole="student">
-            <div className="student-debugger flex min-h-screen flex-col p-3 sm:p-5 xl:h-screen xl:min-h-180">
+            <div className="student-debugger flex min-h-screen flex-col p-3 sm:p-5 lg:h-screen lg:min-h-180">
               {/* Header: logo, title and profile menu */}
               <header className="navbar flex-row items-start gap-4 lg:items-center">
                 <div className="flex flex-1 items-center gap-3">
@@ -902,7 +904,7 @@ function App() {
 
               <main
                 ref={mainRef}
-                className={`grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,var(--left))_1.5rem_minmax(0,var(--right))] xl:grid-rows-[minmax(0,1fr)] xl:gap-0 ${isDragging ? "cursor-col-resize select-none" : ""}`}
+                className={`grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,var(--left))_1.5rem_minmax(0,var(--right))] lg:grid-rows-[minmax(0,1fr)] lg:gap-0 ${isDragging ? "cursor-col-resize select-none" : ""}`}
                 style={
                   {
                     "--left": `${split}fr`,
@@ -911,10 +913,10 @@ function App() {
                 }
               >
                 {/* Left side: code editor and output */}
-                <section className="flex flex-col gap-3 xl:min-h-0">
+                <section className="flex flex-col gap-3 lg:min-h-0">
                   <div
                     data-tour="editor"
-                    className="student-panel card flex h-100 min-h-0 flex-col overflow-hidden rounded-box border border-base-300 bg-base-200 shadow-sm sm:h-120 xl:h-auto xl:flex-3"
+                    className="student-panel card flex h-100 min-h-0 flex-col overflow-hidden rounded-box border border-base-300 bg-base-200 shadow-sm sm:h-120 lg:h-auto lg:flex-3"
                   >
                     <div className="student-panel-header rounded-t-box flex h-14 shrink-0 items-center justify-between bg-base-300 px-4 py-2 text-s text-base-content/60">
                       <span className="flex items-center gap-2">
@@ -1013,7 +1015,7 @@ function App() {
                     <div className="px-3 pb-3">
                       <textarea
                         aria-label="Program input"
-                        className="textarea textarea-sm w-full font-mono"
+                        className="textarea textarea-bordered h-20 min-h-20 max-h-20 w-full resize-none overflow-y-auto rounded-lg font-mono text-sm"
                         rows={2}
                         placeholder="Type what you would enter when the program asks"
                         value={stdin}
@@ -1026,7 +1028,7 @@ function App() {
                       Styled like the editor above, including its theme background. */}
                   <div
                     data-tour="output"
-                    className="student-panel card flex min-h-55 flex-col overflow-hidden rounded-box border border-base-300 bg-base-200 shadow-sm xl:min-h-0 xl:flex-1"
+                    className="student-panel card flex min-h-55 flex-col overflow-hidden rounded-box border border-base-300 bg-base-200 shadow-sm lg:min-h-0 lg:flex-1"
                   >
                     {/* The Expected behaviour tab appears once a run finishes
                         without an error, for checking the output (logic errors). */}
@@ -1164,7 +1166,7 @@ function App() {
                   aria-valuemax={maxSplit}
                   aria-valuenow={Math.round(split)}
                   title="Drag to resize. Double-click to reset."
-                  className="group hidden cursor-col-resize touch-none items-center justify-center xl:flex"
+                  className="group hidden cursor-col-resize touch-none items-center justify-center lg:flex"
                   onPointerDown={handleDividerPointerDown}
                   onPointerMove={handleDividerPointerMove}
                   onPointerUp={handleDividerPointerUp}
@@ -1177,14 +1179,14 @@ function App() {
                 </div>
 
                 {/* Right side: run results and the stage 1 hint */}
-                <section className="flex h-135 min-h-0 flex-col sm:h-155 xl:h-auto">
+                <section className="flex h-135 min-h-0 flex-col sm:h-155 lg:h-auto">
                   <div
                     data-tour="assistant"
                     className="student-card card bg-base-200 shadow-sm flex-1 flex flex-col min-h-0 overflow-hidden border border-base-300"
                   >
-                    <div className="student-panel-header flex h-14 shrink-0 flex-wrap items-center gap-2 rounded-t-box border-b border-base-300/50 bg-base-300 px-4 py-2">
-                      <Sparkles className="mr-1 text-primary size-6" />
-                      <h2 className="flex-1 font-semibold text-xl tracking-wider">
+                    <div className="student-panel-header flex h-14 shrink-0 items-center gap-2 rounded-t-box border-b border-base-300/50 bg-base-300 px-4 py-2">
+                      <Sparkles className="shrink-0 text-primary size-6" />
+                      <h2 className="font-semibold text-xl tracking-wider">
                         HINTS
                       </h2>
                     </div>
@@ -1293,7 +1295,7 @@ function App() {
                                 </div>
                               </div>
 
-                              <div className="ml-auto flex shrink-0 items-center gap-2">
+                              <div className="ml-auto flex shrink-0 flex-col items-start gap-2">
                                 <p className="text-xs font-semibold tracking-wide text-base-content/60">
                                   WHERE TO LOOK
                                 </p>
@@ -1461,6 +1463,7 @@ function App() {
                               }
                               saved={savedError}
                               initialSteps={restoredSteps}
+                              composerHost={followUpComposerHost}
                               onStep={(step) =>
                                 saveChat([
                                   {
@@ -1477,26 +1480,15 @@ function App() {
                                   },
                                 ])
                               }
+                              onShowAnswer={
+                                !answer && !isAnswerLoading && canAskForHint
+                                  ? handleGetAnswer
+                                  : undefined
+                              }
                               onLookAtLine={focusErrorLine}
                               errorMessage={requestErrorMessage}
                             />
                           )}
-
-                          {/* After the hints, the answer is still one click away. */}
-                          {hint &&
-                            !answer &&
-                            !isAnswerLoading &&
-                            !isTourDemo &&
-                            canAskForHint && (
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-ghost self-start"
-                                onClick={handleGetAnswer}
-                              >
-                                <KeyRound size={14} />
-                                Still stuck? Show me the answer
-                              </button>
-                            )}
 
                           {answer && (
                             <SocraticAnswerCard
@@ -1524,6 +1516,7 @@ function App() {
                             <p className="text-sm text-error">{answerError}</p>
                           )}
                         </div>
+                        <div ref={setFollowUpComposerHost} className="shrink-0" />
                       </div>
                     </div>
                   </div>
