@@ -178,7 +178,7 @@ push to main ──► GitHub Action ──► public repo ──► Vercel (web
 | API | Vercel Python function, Sydney region | Built from `src/backend`. [`vercel.json`](../src/backend/vercel.json) routes every request to `app/main.py`. Environment: every backend variable in the table above, with `PISTON_URL` set to the VM. The deployed requirements leave out SHAP, LIME and DiCE so the function stays under Vercel's 500 MB limit |
 | Sandbox | Google Cloud VM running Docker | The same `piston` and `piston-setup` services as `docker-compose.yml`. Piston cannot run on Vercel because it needs a privileged container and a persistent volume |
 | Database and accounts | Supabase | The team's shared project |
-| Allowed origins | [`src/backend/app/main.py`](../src/backend/app/main.py) | CORS allows `http://localhost:5173` and the production web app only. Add any new frontend address there |
+| Allowed origins | [`src/backend/app/main.py`](../src/backend/app/main.py) | CORS allows `http://localhost:5173` and the production web app by default. Set `ALLOWED_ORIGINS` in Vercel to a comma-separated list to allow additional frontend addresses; these are added to the defaults |
 
 **How a change reaches production.** The course repository is private, so [`.github/workflows/sync-public.yml`](../.github/workflows/sync-public.yml) runs on every push to `main` and copies `src/`, `deployment/` and the root package files to the public repository [Buksh-head/Intelligent-Debugger](https://github.com/Buksh-head/Intelligent-Debugger), which Vercel deploys from. It needs a `PUBLIC_REPO_TOKEN` secret with write access to that repository. `.env` files are git-ignored, so they are never in the checkout and cannot be copied.
 

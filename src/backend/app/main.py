@@ -57,9 +57,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         o.strip()
-        for o in os.environ.get(
-            "ALLOWED_ORIGINS",
-            "http://localhost:5173,https://error-guide.vercel.app,https://intelligent-debugger.vercel.app",
+        for o in (
+            "http://localhost:5173,"
+            "https://error-guide.vercel.app,"
+            "https://intelligent-debugger.vercel.app,"
+            + os.environ.get("ALLOWED_ORIGINS", "")
         ).split(",")
         if o.strip()
     ],
