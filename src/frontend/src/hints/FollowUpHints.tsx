@@ -134,7 +134,7 @@ export default function FollowUpHints({
           <div className="flex flex-col items-stretch gap-2">
             <textarea
               id="hint-reply"
-              className="textarea textarea-bordered h-[3.75rem] min-h-[3.75rem] max-h-[3.75rem] w-full resize-none overflow-y-auto rounded-lg text-sm"
+              className="textarea textarea-bordered h-20 min-h-20 max-h-20 w-full resize-none overflow-y-auto rounded-lg text-base"
               rows={2}
               maxLength={MAX_REPLY_CHARS}
               placeholder="Answer the question in your own words and you'll get the next hint..."
