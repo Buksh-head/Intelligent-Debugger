@@ -57,7 +57,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         o.strip()
-        for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+        for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173","https://error-guide.vercel.app",
+        "https://intelligent-debugger.vercel.app").split(",")
         if o.strip()
     ],
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
