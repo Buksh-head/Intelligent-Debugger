@@ -1,0 +1,8 @@
+# Offline explainability tools, not needed to run the app. The served answer
+# computes linear SHAP with numpy and never loads LIME or DiCE (dice-ml pulls in
+# about 430 MB with xgboost). Install these to run the SHAP, LIME and DiCE
+# cross-check tests, which are skipped without them.
+-r requirements.txt
+shap>=0.52,<1.0
+lime>=0.2,<1.0
+dice-ml>=0.12,<1.0

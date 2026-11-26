@@ -7,7 +7,7 @@ import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
-  envDir: "../../deployment",
+  envDir: "../deployment",
   server: {
     proxy: {
       // Send /api requests to the backend

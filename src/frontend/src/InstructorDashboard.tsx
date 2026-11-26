@@ -27,6 +27,17 @@ import { courses } from "./session/courses";
 import { startInstructorTour } from "./tour/instructorTour";
 import { hasSeenTour } from "./tour/tourStatus";
 const appLogo = "/error-guide-logo.png";
+
+// The backend's reason when it gave one (e.g. "Saving is not set up on this
+// server"), otherwise the request's own error.
+const requestError = (error: unknown, fallback: string): string => {
+  if (axios.isAxiosError(error)) {
+    const detail = (error.response?.data as { detail?: unknown } | undefined)
+      ?.detail;
+    if (typeof detail === "string") return detail;
+  }
+  return error instanceof Error ? error.message : fallback;
+};
 type InstructorDashboardProps = {
   onBack: () => void;
 };
@@ -73,9 +84,7 @@ export default function InstructorDashboard({
       .then(setAnalytics)
       .catch((error: unknown) =>
         setAnalyticsError(
-          error instanceof Error
-            ? error.message
-            : "Unable to load cohort analytics.",
+          requestError(error, "Unable to load cohort analytics."),
         ),
       );
   }, [course, dateRange]);
@@ -142,9 +151,7 @@ export default function InstructorDashboard({
           return;
         }
         setInsightError(
-          error instanceof Error
-            ? error.message
-            : "Unable to generate instructor insight.",
+          requestError(error, "Unable to generate instructor insight."),
         );
       } finally {
         if (!controller.signal.aborted) {

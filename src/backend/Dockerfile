@@ -1,16 +1,12 @@
+# Backend API (FastAPI) on port 8000. Student code runs in Piston, not here.
 FROM python:3.12-slim
 
 WORKDIR /app
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-	PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir --no-compile -r requirements.txt \
-	&& useradd --create-home --shell /usr/sbin/nologin appuser
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY --chown=appuser:appuser . .
-
-USER appuser
+COPY . .
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

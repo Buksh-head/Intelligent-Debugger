@@ -5,7 +5,7 @@
  */
 import { driver, type Driver, type DriveStep } from "driver.js";
 import "driver.js/dist/driver.css";
-import type { ExecutionResponse } from "../types";
+import type { ExecutionResponse, Stage1Hint } from "../types";
 import { saveTourStatus } from "./tourStatus";
 
 type TourOptions = {
@@ -17,9 +17,17 @@ type TourOptions = {
 };
 
 // Broken sample code the tour puts in the editor, with the result Run shows
-// for it. The result is made up on the frontend so tour runs never reach the
-// backend or the instructor stats. error_id is null, so no hint is fetched.
-type TourSample = { code: string; result: ExecutionResponse };
+// for it and the hint "Give me a hint" shows. Both are made up on the
+// frontend so tour runs never reach the backend.
+type TourSample = { code: string; result: ExecutionResponse; hint: Stage1Hint };
+
+const sampleHint = (question: string, line: number): Stage1Hint => ({
+  question,
+  error_type: null,
+  error_line: line,
+  cause_line: line,
+  source: "fallback",
+});
 
 const tourSamples: Record<string, TourSample> = {
   Python: {
@@ -35,9 +43,16 @@ const tourSamples: Record<string, TourSample> = {
         message: "list index out of range",
         line_number: 2,
         code_snippet: "print(numbers[3])",
+        friendly_title: "That position doesn't exist in the list",
+        friendly_message:
+          "On line 2, you ask for an item by its position with [ ], but the list doesn't have an item at that position.",
       },
       error_id: null,
     },
+    hint: sampleHint(
+      "On line 2 you ask for numbers[3]. How many items are in numbers, and what position number does Python give the first one?",
+      2,
+    ),
   },
   Java: {
     code:
@@ -59,9 +74,16 @@ const tourSamples: Record<string, TourSample> = {
         message: "Index 3 out of bounds for length 3",
         line_number: 4,
         code_snippet: "System.out.println(numbers[3]);",
+        friendly_title: "That position doesn't exist in the array",
+        friendly_message:
+          "On line 4, you ask for an item by its position with [ ], but the array doesn't have an item at that position.",
       },
       error_id: null,
     },
+    hint: sampleHint(
+      "On line 4 you ask for numbers[3]. How many items are in numbers, and what index does Java give the first one?",
+      4,
+    ),
   },
   JavaScript: {
     code: "const numbers = [1, 2, 3];\nconsole.log(numbers[3].toFixed(1));\n",
@@ -77,9 +99,16 @@ const tourSamples: Record<string, TourSample> = {
         message: "Cannot read properties of undefined (reading 'toFixed')",
         line_number: 2,
         code_snippet: "console.log(numbers[3].toFixed(1));",
+        friendly_title: "The value is undefined, so it has no .toFixed",
+        friendly_message:
+          "On line 2, you use .toFixed on a value, but that value is undefined, which means \"no value\".",
       },
       error_id: null,
     },
+    hint: sampleHint(
+      "On line 2 you ask for numbers[3]. How many items are in numbers, and what index does JavaScript give the first one?",
+      2,
+    ),
   },
 };
 
@@ -127,19 +156,9 @@ const buildSteps = (options: TourOptions, tour: Driver): DriveStep[] => {
     popover: {
       title: "Make more room",
       description:
-        "Drag this line to give your code or the assistant more space. Double-click it to reset.",
+        "Drag this line to give your code or the hints more space. Double-click it to reset.",
     },
   });
-
-  const replyBox: DriveStep = {
-    element: '[data-tour="chat-input"]',
-    popover: {
-      title: "Reply to the assistant",
-      description:
-        "With hints, answer the assistant here to unlock the next hint.",
-      side: "top",
-    },
-  };
 
   const help: DriveStep = {
     element: '[data-tour="help"]',
@@ -179,11 +198,10 @@ const buildSteps = (options: TourOptions, tour: Driver): DriveStep[] => {
         popover: {
           title: "Get help with errors",
           description:
-            "When your code has an error, the assistant tells you what happened and which line to look at. You can then ask for a hint to work it out step by step. Once you have had a good go at understanding the error, the full answer unlocks too.",
+            "When your code has an error, this tells you what happened and which line to look at. You can then ask for a hint: a question that points you towards the problem so you can fix it yourself.",
           side: "left",
         },
       },
-      replyBox,
       ...divider,
       help,
     ];
@@ -229,7 +247,7 @@ const buildSteps = (options: TourOptions, tour: Driver): DriveStep[] => {
       popover: {
         title: "What happened and where",
         description:
-          'This explains the error in plain words. "Go to line" jumps straight to the line to look at.',
+          'This explains the error in plain words, without the jargon. "Go to line" jumps straight to the line Python stopped at.',
         side: "left",
       },
     },
@@ -238,11 +256,10 @@ const buildSteps = (options: TourOptions, tour: Driver): DriveStep[] => {
       popover: {
         title: "Ask for a hint",
         description:
-          "A hint walks you through finding the fix yourself, one step at a time. Once you have had a good go at understanding the error, Show me the answer unlocks and explains the fix.",
+          "A hint is a question about your code. It points you at what to check, without giving the answer away, so you find the fix yourself.",
         side: "left",
       },
     },
-    replyBox,
     ...divider,
     help,
   ];

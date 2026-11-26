@@ -1,9 +1,9 @@
 import { defineConfig, mergeConfig } from "vitest/config";
 import viteConfig from "./vite.config.ts";
 
-// Frontend tests live in tests/frontend at the repo root, next to the backend
-// tests. The repo root has its own stray node_modules with a second copy of
-// React, so these packages are pinned to this app's copies.
+// Frontend tests live in tests/frontend at the project root, next to the
+// backend tests. They sit outside this app, so these packages are pinned to
+// this app's copies.
 export default mergeConfig(
   viteConfig,
   defineConfig({
@@ -15,6 +15,7 @@ export default mergeConfig(
         "@monaco-editor/react",
         "@testing-library/react",
         "@testing-library/user-event",
+        "axios",
       ],
     },
     server: {
@@ -23,18 +24,21 @@ export default mergeConfig(
     test: {
       dir: "../../tests/frontend",
       environment: "jsdom",
-      // `npm run coverage` writes the report to tests/coverage/frontend, next
-      // to the backend report, so both are part of the handover package.
+      // The Supabase client is created on import; tests replace the login, so
+      // any values will do.
+      env: {
+        VITE_SUPABASE_URL: "http://localhost:54321",
+        VITE_SUPABASE_ANON_KEY: "test-anon-key",
+      },
       coverage: {
         provider: "v8",
         include: ["src/**/*.{ts,tsx}"],
         exclude: [
-          "src/debugging-assistant-ui/**",
           "src/main.tsx",
           "src/vite-env.d.ts",
         ],
         reporter: ["text", "text-summary", "json-summary", "html"],
-        reportsDirectory: "../../tests/coverage/frontend",
+        reportsDirectory: "coverage",
       },
     },
   }),

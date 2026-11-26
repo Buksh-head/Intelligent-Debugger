@@ -8,7 +8,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
-    "VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY must be set (see deployment/.env.example)",
+    "VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY must be set (see src/deployment/.env.example)",
   );
 }
 
